@@ -1,0 +1,7 @@
+streamlit>=1.37
+pydantic>=2.7
+pandas>=2.2
+python-dateutil>=2.9
+requests>=2.32
+openpyxl>=3.1
+tzdata>=2024.1
