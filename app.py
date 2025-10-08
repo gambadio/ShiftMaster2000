@@ -269,16 +269,10 @@ with tabs[1]:
             default=current_shift.weekdays if current_shift else ["Mon","Tue","Wed","Thu","Fri"],
             key="shift_weekdays_multiselect"
         )
-        default_req = st.number_input(
-            "Default required headcount",
-            min_value=0,
-            max_value=50,
-            value=current_shift.default_required if current_shift else 0,
-            key="shift_default_req"
-        )
         notes = st.text_input("Notes", value=current_shift.notes if current_shift and current_shift.notes else "", key="shift_notes_input")
 
-        st.markdown("**Per-weekday required headcount (optional overrides):**")
+        st.markdown("**Per-weekday required headcount:**")
+        st.caption("Enter headcount per weekday; leave 0 when the shift doesn't run.")
         cols = st.columns(7)
         per = current_shift.required_count.copy() if current_shift else {}
         wds = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
@@ -296,6 +290,18 @@ with tabs[1]:
                 elif wd in per:
                     del per[wd]
 
+        bulk_value = st.number_input(
+            "Set all weekdays to",
+            min_value=0,
+            max_value=50,
+            value=0,
+            key="shift_bulk_req"
+        )
+        if st.button("Apply to all weekdays", key="shift_apply_bulk"):
+            for wd in wds:
+                st.session_state[f"req_{wd}"] = int(bulk_value)
+            st.rerun()
+
         if st.button("Save shift"):
             if not sid.strip():
                 st.error("Shift ID is required.")
@@ -306,7 +312,6 @@ with tabs[1]:
                     start_time=start.strip(),
                     end_time=end.strip(),
                     weekdays=weekdays,
-                    default_required=int(default_req),
                     required_count=per,
                     notes=notes or None,
                 )

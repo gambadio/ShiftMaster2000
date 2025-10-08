@@ -1,17 +1,17 @@
 from __future__ import annotations
 from typing import List, Optional, Dict, Any, Tuple
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 ShiftID = str
 
 class ShiftTemplate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     id: ShiftID
     role: str
     start_time: str  # "HH:MM"
     end_time: str    # "HH:MM"
     weekdays: List[str] = Field(default_factory=lambda: ["Mon","Tue","Wed","Thu","Fri"])
-    required_count: Dict[str, int] = Field(default_factory=dict)  # per weekday override; fallback to default_required
-    default_required: int = 0
+    required_count: Dict[str, int] = Field(default_factory=dict)  # per weekday required headcount
     notes: Optional[str] = None
 
 class Employee(BaseModel):
