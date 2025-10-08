@@ -271,7 +271,7 @@ with tabs[1]:
         )
         notes = st.text_input("Notes", value=current_shift.notes if current_shift and current_shift.notes else "", key="shift_notes_input")
 
-        st.markdown("**Per-weekday required headcount:**")
+        st.markdown("**Per-weekday required headcount (people needed each day):**")
         st.caption("Enter headcount per weekday; leave 0 when the shift doesn't run.")
         cols = st.columns(7)
         per = current_shift.required_count.copy() if current_shift else {}
@@ -289,18 +289,6 @@ with tabs[1]:
                     per[wd] = int(val)
                 elif wd in per:
                     del per[wd]
-
-        bulk_value = st.number_input(
-            "Set all weekdays to",
-            min_value=0,
-            max_value=50,
-            value=0,
-            key="shift_bulk_req"
-        )
-        if st.button("Apply to all weekdays", key="shift_apply_bulk"):
-            for wd in wds:
-                st.session_state[f"req_{wd}"] = int(bulk_value)
-            st.rerun()
 
         if st.button("Save shift"):
             if not sid.strip():
