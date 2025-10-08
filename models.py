@@ -21,10 +21,6 @@ class Employee(BaseModel):
     percent: Optional[int] = None  # e.g., 60, 80, 100
     roles: List[str] = Field(default_factory=list)  # allowed roles
     languages: List[str] = Field(default_factory=list)
-    can_piket: bool = False
-    can_piket_sob: bool = False
-    can_pcv_wove: bool = False
-    can_techbar: bool = False
     earliest_start: Optional[str] = None  # "07:00"
     latest_end: Optional[str] = None      # "19:00"
     weekday_blockers: Dict[str, str] = Field(default_factory=dict)  # {"Tue": "school 7:00-12:00"}

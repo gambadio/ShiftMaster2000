@@ -76,12 +76,37 @@ with tabs[0]:
         emp_name = st.text_input("Name")
         emp_email = st.text_input("Email")
         emp_percent = st.number_input("Employment percent", min_value=0, max_value=200, value=100)
-        roles = st.text_input("Allowed roles (comma-separated)", value="Contact Team, Dispatcher")
+
+        if "role_options" not in st.session_state:
+            st.session_state.role_options = []
+
+        inferred_roles = {
+            s.role.strip()
+            for s in project.shifts
+            if isinstance(s.role, str) and s.role.strip()
+        }
+        inferred_roles.update(
+            r.strip()
+            for employee in project.employees
+            for r in employee.roles
+            if isinstance(r, str) and r.strip()
+        )
+
+        if inferred_roles:
+            st.session_state.role_options = sorted(inferred_roles)
+
+        available_roles = st.session_state.role_options
+
+        if not available_roles:
+            st.info("No roles defined yet. Add roles in the 'Shifts & Roles' tab to populate this list.")
+
+        selected_roles = st.multiselect(
+            "Allowed roles",
+            options=available_roles,
+            default=[],
+            placeholder="Select one or more roles",
+        )
         languages = st.text_input("Languages (comma-separated)", value="DE, FR")
-        can_piket = st.checkbox("Can do Pikett (normal)")
-        can_piket_sob = st.checkbox("Can do Pikett SOB")
-        can_pcv_wove = st.checkbox("Can do PCV Wove")
-        can_techbar = st.checkbox("Can do Techbar")
         earliest = st.text_input("Earliest start (HH:MM)", value="07:00")
         latest = st.text_input("Latest end (HH:MM)", value="19:00")
 
@@ -107,12 +132,8 @@ with tabs[0]:
                     name=emp_name,
                     email=emp_email or None,
                     percent=int(emp_percent) if emp_percent else None,
-                    roles=[r.strip() for r in roles.split(",") if r.strip()],
+                    roles=selected_roles,
                     languages=[l.strip() for l in languages.split(",") if l.strip()],
-                    can_piket=can_piket,
-                    can_piket_sob=can_piket_sob,
-                    can_pcv_wove=can_pcv_wove,
-                    can_techbar=can_techbar,
                     earliest_start=earliest or None,
                     latest_end=latest or None,
                     weekday_blockers={k:v for k,v in blockers.items() if v.strip()},
@@ -161,6 +182,13 @@ with tabs[1]:
                 weekdays=weekdays, default_required=int(default_req), required_count=per, notes=notes or None
             )
             project.shifts.append(s)
+            st.session_state.role_options = sorted(
+                {
+                    sh.role.strip()
+                    for sh in project.shifts
+                    if isinstance(sh.role, str) and sh.role.strip()
+                }
+            )
             st.success(f"Added shift {sid}")
 
     if project.shifts:
@@ -170,6 +198,13 @@ with tabs[1]:
         to_remove = st.multiselect("Remove shifts", [s.id for s in project.shifts])
         if st.button("Remove selected shifts"):
             project.shifts = [s for s in project.shifts if s.id not in to_remove]
+            st.session_state.role_options = sorted(
+                {
+                    sh.role.strip()
+                    for sh in project.shifts
+                    if isinstance(sh.role, str) and sh.role.strip()
+                }
+            ) if project.shifts else []
             st.success("Removed shifts.")
 
 # ---------------------------------------------------------
