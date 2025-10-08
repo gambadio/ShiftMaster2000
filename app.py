@@ -72,10 +72,35 @@ tabs = st.tabs(["Employees", "Shifts & Roles", "Rules & Preamble", "Schedule Fil
 # ---------------------------------------------------------
 with tabs[0]:
     st.subheader("Employees")
+
+    if "editing_employee_id" not in st.session_state:
+        st.session_state.editing_employee_id = None
+
+    st.markdown("**Select an employee to edit**")
+    existing_emp_names = [e.name for e in project.employees]
+    selected_emp_name = st.selectbox(
+        "Employee",
+        options=["➕ New employee"] + existing_emp_names,
+        index=(existing_emp_names.index(next((e.name for e in project.employees if e.id == st.session_state.editing_employee_id), existing_emp_names[0])) + 1) if st.session_state.editing_employee_id else 0
+    )
+
+    if selected_emp_name == "➕ New employee":
+        st.session_state.editing_employee_id = None
+        current_employee = None
+    else:
+        current_employee = next((e for e in project.employees if e.name == selected_emp_name), None)
+        st.session_state.editing_employee_id = current_employee.id if current_employee else None
+
     with st.expander("➕ Add / edit employee", expanded=True):
-        emp_name = st.text_input("Name")
-        emp_email = st.text_input("Email")
-        emp_percent = st.number_input("Employment percent", min_value=0, max_value=200, value=100)
+        emp_name = st.text_input("Name", value=current_employee.name if current_employee else "")
+        emp_email = st.text_input("Email", value=current_employee.email if current_employee else "")
+        emp_percent = st.number_input(
+            "Employment percent",
+            min_value=0,
+            max_value=200,
+            value=current_employee.percent if (current_employee and current_employee.percent is not None) else 100,
+            key="emp_percent_input"
+        )
 
         if "role_options" not in st.session_state:
             st.session_state.role_options = []
@@ -84,7 +109,7 @@ with tabs[0]:
             s.role.strip()
             for s in project.shifts
             if isinstance(s.role, str) and s.role.strip()
-        }
+        } 
         inferred_roles.update(
             r.strip()
             for employee in project.employees
@@ -100,35 +125,61 @@ with tabs[0]:
         if not available_roles:
             st.info("No roles defined yet. Add roles in the 'Shifts & Roles' tab to populate this list.")
 
+        current_roles = current_employee.roles if current_employee else []
         selected_roles = st.multiselect(
             "Allowed roles",
             options=available_roles,
-            default=[],
+            default=current_roles,
             placeholder="Select one or more roles",
+            key="emp_roles_multiselect"
         )
-        languages = st.text_input("Languages (comma-separated)", value="DE, FR")
-        earliest = st.text_input("Earliest start (HH:MM)", value="07:00")
-        latest = st.text_input("Latest end (HH:MM)", value="19:00")
+        languages = st.text_input(
+            "Languages (comma-separated)",
+            value=", ".join(current_employee.languages) if current_employee else "DE, FR",
+            key="emp_languages_input"
+        )
+        earliest = st.text_input(
+            "Earliest start (HH:MM)",
+            value=current_employee.earliest_start if current_employee and current_employee.earliest_start else "07:00",
+            key="emp_earliest_input"
+        )
+        latest = st.text_input(
+            "Latest end (HH:MM)",
+            value=current_employee.latest_end if current_employee and current_employee.latest_end else "19:00",
+            key="emp_latest_input"
+        )
 
         weekdays = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
         st.markdown("**Weekday blockers** (free text per day, leave blank if none):")
         blockers = {}
         cols = st.columns(7)
+        existing_blockers = current_employee.weekday_blockers if current_employee else {}
         for i,wd in enumerate(weekdays):
             with cols[i]:
-                blockers[wd] = st.text_input(wd, key=f"blk_{wd}")
+                blockers[wd] = st.text_input(wd, value=existing_blockers.get(wd, ""), key=f"blk_{wd}")
 
-        hard_constraints = st.text_area("Hard constraints (one per line)", height=100,
-            placeholder="No Pikett the week after vacation.\nNo dispatcher on Tue due to school 07:00-12:00.")
-        soft_preferences = st.text_area("Soft preferences (one per line)", height=100,
-            placeholder="Prefer 08:00-17:00 when possible.\nAvoid closing shifts on Fridays.")
+        hard_constraints = st.text_area(
+            "Hard constraints (one per line)",
+            height=100,
+            value="\n".join(current_employee.hard_constraints) if current_employee else "",
+            placeholder="No Pikett the week after vacation.\nNo dispatcher on Tue due to school 07:00-12:00.",
+            key="emp_hard_constraints"
+        )
+        soft_preferences = st.text_area(
+            "Soft preferences (one per line)",
+            height=100,
+            value="\n".join(current_employee.soft_preferences) if current_employee else "",
+            placeholder="Prefer 08:00-17:00 when possible.\nAvoid closing shifts on Fridays.",
+            key="emp_soft_preferences"
+        )
 
-        if st.button("Add employee to project"):
+        if st.button("Save employee"):
             if not emp_name.strip():
                 st.error("Please enter a name.")
             else:
-                new_emp = Employee(
-                    id=emp_name.lower().replace(" ","-"),
+                emp_id = emp_name.lower().replace(" ","-")
+                updated_emp = Employee(
+                    id=emp_id,
                     name=emp_name,
                     email=emp_email or None,
                     percent=int(emp_percent) if emp_percent else None,
@@ -140,8 +191,40 @@ with tabs[0]:
                     hard_constraints=[x.strip() for x in hard_constraints.splitlines() if x.strip()],
                     soft_preferences=[x.strip() for x in soft_preferences.splitlines() if x.strip()],
                 )
-                project.employees.append(new_emp)
-                st.success(f"Added {emp_name}")
+
+                existing_idx = next((idx for idx, emp in enumerate(project.employees) if emp.id == st.session_state.editing_employee_id), None)
+                if existing_idx is None:
+                    project.employees.append(updated_emp)
+                    st.session_state.editing_employee_id = emp_id
+                    st.success(f"Added {emp_name}")
+                else:
+                    project.employees[existing_idx] = updated_emp
+                    st.session_state.editing_employee_id = emp_id
+                    st.success(f"Updated {emp_name}")
+
+                # refresh role options cache based on updated data
+                st.session_state.role_options = sorted(
+                    {
+                        r.strip()
+                        for emp in project.employees
+                        for r in emp.roles
+                        if isinstance(r, str) and r.strip()
+                    }
+                    .union({
+                        sh.role.strip()
+                        for sh in project.shifts
+                        if isinstance(sh.role, str) and sh.role.strip()
+                    })
+                )
+
+        if current_employee and st.button("Duplicate employee", key="dup_employee"):
+            clone = current_employee.model_copy(deep=True)
+            clone_id = f"{clone.id}-copy"
+            clone.id = clone_id
+            clone.name = f"{clone.name} (copy)"
+            project.employees.append(clone)
+            st.session_state.editing_employee_id = clone_id
+            st.success(f"Duplicated {current_employee.name}")
 
     if project.employees:
         st.markdown("#### Current employees")
@@ -157,39 +240,93 @@ with tabs[0]:
 # ---------------------------------------------------------
 with tabs[1]:
     st.subheader("Shifts & Roles")
+
+    if "editing_shift_id" not in st.session_state:
+        st.session_state.editing_shift_id = None
+
+    shift_options = ["➕ New shift"] + [s.id for s in project.shifts]
+    selected_shift_id = st.selectbox(
+        "Shift",
+        options=shift_options,
+        index=shift_options.index(st.session_state.editing_shift_id) if st.session_state.editing_shift_id in shift_options else 0,
+    )
+
+    if selected_shift_id == "➕ New shift":
+        st.session_state.editing_shift_id = None
+        current_shift = None
+    else:
+        current_shift = next((s for s in project.shifts if s.id == selected_shift_id), None)
+        st.session_state.editing_shift_id = current_shift.id if current_shift else None
+
     with st.expander("➕ Add / edit shift template", expanded=True):
-        sid = st.text_input("Shift ID", value="contact-0700")
-        role = st.text_input("Role", value="Contact Team")
-        start = st.text_input("Start time (HH:MM)", value="07:00")
-        end = st.text_input("End time (HH:MM)", value="16:00")
-        weekdays = st.multiselect("Weekdays", ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], default=["Mon","Tue","Wed","Thu","Fri"])
-        default_req = st.number_input("Default required headcount", min_value=0, max_value=50, value=0)
-        notes = st.text_input("Notes", value="")
+        sid = st.text_input("Shift ID", value=current_shift.id if current_shift else "contact-0700", key="shift_id_input")
+        role = st.text_input("Role", value=current_shift.role if current_shift else "Contact Team", key="shift_role_input")
+        start = st.text_input("Start time (HH:MM)", value=current_shift.start_time if current_shift else "07:00", key="shift_start_input")
+        end = st.text_input("End time (HH:MM)", value=current_shift.end_time if current_shift else "16:00", key="shift_end_input")
+        weekdays = st.multiselect(
+            "Weekdays",
+            ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+            default=current_shift.weekdays if current_shift else ["Mon","Tue","Wed","Thu","Fri"],
+            key="shift_weekdays_multiselect"
+        )
+        default_req = st.number_input(
+            "Default required headcount",
+            min_value=0,
+            max_value=50,
+            value=current_shift.default_required if current_shift else 0,
+            key="shift_default_req"
+        )
+        notes = st.text_input("Notes", value=current_shift.notes if current_shift and current_shift.notes else "", key="shift_notes_input")
 
         st.markdown("**Per-weekday required headcount (optional overrides):**")
         cols = st.columns(7)
-        per = {}
+        per = current_shift.required_count.copy() if current_shift else {}
         wds = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
         for i,wd in enumerate(wds):
             with cols[i]:
-                val = st.number_input(wd, min_value=0, max_value=50, value=0, key=f"req_{wd}")
+                val = st.number_input(
+                    wd,
+                    min_value=0,
+                    max_value=50,
+                    value=per.get(wd, 0),
+                    key=f"req_{wd}"
+                )
                 if val:
                     per[wd] = int(val)
+                elif wd in per:
+                    del per[wd]
 
-        if st.button("Add shift template"):
-            s = ShiftTemplate(
-                id=sid, role=role, start_time=start, end_time=end,
-                weekdays=weekdays, default_required=int(default_req), required_count=per, notes=notes or None
-            )
-            project.shifts.append(s)
-            st.session_state.role_options = sorted(
-                {
-                    sh.role.strip()
-                    for sh in project.shifts
-                    if isinstance(sh.role, str) and sh.role.strip()
-                }
-            )
-            st.success(f"Added shift {sid}")
+        if st.button("Save shift"):
+            if not sid.strip():
+                st.error("Shift ID is required.")
+            else:
+                new_shift = ShiftTemplate(
+                    id=sid.strip(),
+                    role=role.strip(),
+                    start_time=start.strip(),
+                    end_time=end.strip(),
+                    weekdays=weekdays,
+                    default_required=int(default_req),
+                    required_count=per,
+                    notes=notes or None,
+                )
+
+                existing_idx = next((idx for idx, sh in enumerate(project.shifts) if sh.id == st.session_state.editing_shift_id), None)
+                if existing_idx is None:
+                    project.shifts.append(new_shift)
+                    st.success(f"Added shift {sid}")
+                else:
+                    project.shifts[existing_idx] = new_shift
+                    st.success(f"Updated shift {sid}")
+
+                st.session_state.editing_shift_id = new_shift.id
+                st.session_state.role_options = sorted(
+                    {
+                        sh.role.strip()
+                        for sh in project.shifts
+                        if isinstance(sh.role, str) and sh.role.strip()
+                    }
+                )
 
     if project.shifts:
         st.markdown("#### Current shifts")
