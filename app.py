@@ -27,6 +27,28 @@ from prompt_templates import build_system_prompt
 st.set_page_config(page_title="Shift Prompt Studio", page_icon="🗓️", layout="wide")
 
 # ---------------------------------------------------------
+# Language options compatible with Teams Shifts
+# ---------------------------------------------------------
+LANGUAGE_OPTIONS = [
+    "DE", "FR", "IT", "EN",  # Swiss languages
+    "ES", "PT", "NL", "PL", "RU", "AR", "ZH", "JA", "KO",  # Other common languages
+    "CS", "DA", "FI", "EL", "HU", "NO", "SV", "TR", "UK",  # European languages
+    "HI", "TH", "VI", "ID", "MS", "FA", "HE", "RO", "BG"   # Additional languages
+]
+
+# ---------------------------------------------------------
+# Custom CSS for better dropdown visibility
+# ---------------------------------------------------------
+st.markdown("""
+<style>
+    /* Minimal spacing adjustments */
+    .stSelectbox {
+        margin-bottom: 1rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------
 # Session state initialization
 # ---------------------------------------------------------
 if "project" not in st.session_state:
@@ -128,17 +150,19 @@ with tabs[0]:
         st.session_state.editing_employee_id = None
 
     existing_emp_names = [e.name for e in project.employees]
-    selected_emp_name = st.selectbox(
-        "Select employee",
-        options=["➕ New employee"] + existing_emp_names,
-        key="emp_selector"
-    )
+
+    # Determine current employee first
+    if st.session_state.get("selected_emp_name"):
+        selected_emp_name = st.session_state.selected_emp_name
+    else:
+        selected_emp_name = "➕ New employee"
 
     if selected_emp_name == "➕ New employee":
         current_employee = None
     else:
         current_employee = next((e for e in project.employees if e.name == selected_emp_name), None)
 
+    # Put the form ABOVE the selector
     with st.expander("➕ Add / Edit Employee", expanded=True):
         col1, col2 = st.columns(2)
 
@@ -169,8 +193,15 @@ with tabs[0]:
                 key="emp_roles"
             )
 
-        languages = st.text_input("Languages (comma-separated)",
-            value=", ".join(current_employee.languages) if current_employee else "DE, FR")
+        # Language multiselect with predefined options
+        current_languages = current_employee.languages if current_employee else ["DE", "FR"]
+        selected_languages = st.multiselect(
+            "Languages",
+            options=LANGUAGE_OPTIONS,
+            default=current_languages,
+            key="emp_languages",
+            help="Select one or more languages the employee speaks"
+        )
 
         col3, col4 = st.columns(2)
         with col3:
@@ -211,7 +242,7 @@ with tabs[0]:
                     group=emp_group or None,
                     percent=int(emp_percent),
                     roles=selected_roles,
-                    languages=[l.strip() for l in languages.split(",") if l.strip()],
+                    languages=selected_languages,
                     earliest_start=earliest or None,
                     latest_end=latest or None,
                     weekday_blockers={k:v for k,v in blockers.items() if v.strip()},
@@ -226,7 +257,23 @@ with tabs[0]:
                 else:
                     project.employees[existing_idx] = updated_emp
                     st.success(f"Updated {emp_name}")
+                st.session_state.selected_emp_name = emp_name
                 st.rerun()
+
+    # Selector comes AFTER the form
+    selected_emp_name = st.selectbox(
+        "Select employee to edit",
+        options=["➕ New employee"] + existing_emp_names,
+        key="emp_selector",
+        index=0 if not st.session_state.get("selected_emp_name") else
+              (existing_emp_names.index(st.session_state.selected_emp_name) + 1
+               if st.session_state.get("selected_emp_name") in existing_emp_names else 0)
+    )
+
+    # Update session state when selector changes
+    if selected_emp_name != st.session_state.get("selected_emp_name"):
+        st.session_state.selected_emp_name = selected_emp_name
+        st.rerun()
 
     if project.employees:
         st.markdown("#### Current Employees")
@@ -236,6 +283,8 @@ with tabs[0]:
         to_remove = st.multiselect("Remove employees", [e.name for e in project.employees])
         if st.button("🗑️ Remove Selected"):
             project.employees = [e for e in project.employees if e.name not in to_remove]
+            if st.session_state.get("selected_emp_name") in to_remove:
+                st.session_state.selected_emp_name = "➕ New employee"
             st.success("Removed")
             st.rerun()
 
@@ -249,13 +298,19 @@ with tabs[1]:
         st.session_state.editing_shift_id = None
 
     shift_options = ["➕ New shift"] + [s.id for s in project.shifts]
-    selected_shift_id = st.selectbox("Select shift", options=shift_options, key="shift_selector")
+
+    # Determine current shift first
+    if st.session_state.get("selected_shift_id"):
+        selected_shift_id = st.session_state.selected_shift_id
+    else:
+        selected_shift_id = "➕ New shift"
 
     if selected_shift_id == "➕ New shift":
         current_shift = None
     else:
         current_shift = next((s for s in project.shifts if s.id == selected_shift_id), None)
 
+    # Put the form ABOVE the selector
     with st.expander("➕ Add / Edit Shift Template", expanded=True):
         col1, col2 = st.columns(2)
 
@@ -330,7 +385,23 @@ with tabs[1]:
                 else:
                     project.shifts[existing_idx] = new_shift
                     st.success(f"Updated {sid}")
+                st.session_state.selected_shift_id = sid.strip()
                 st.rerun()
+
+    # Selector comes AFTER the form
+    selected_shift_id = st.selectbox(
+        "Select shift to edit",
+        options=shift_options,
+        key="shift_selector",
+        index=0 if not st.session_state.get("selected_shift_id") else
+              (shift_options.index(st.session_state.selected_shift_id)
+               if st.session_state.get("selected_shift_id") in shift_options else 0)
+    )
+
+    # Update session state when selector changes
+    if selected_shift_id != st.session_state.get("selected_shift_id"):
+        st.session_state.selected_shift_id = selected_shift_id
+        st.rerun()
 
     if project.shifts:
         st.markdown("#### Current Shifts")
@@ -340,6 +411,8 @@ with tabs[1]:
         to_remove = st.multiselect("Remove shifts", [s.id for s in project.shifts])
         if st.button("🗑️ Remove Selected Shifts"):
             project.shifts = [s for s in project.shifts if s.id not in to_remove]
+            if st.session_state.get("selected_shift_id") in to_remove:
+                st.session_state.selected_shift_id = "➕ New shift"
             st.success("Removed")
             st.rerun()
 
