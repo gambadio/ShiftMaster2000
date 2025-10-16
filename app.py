@@ -123,8 +123,6 @@ with st.sidebar:
         days = (project.planning_period.end_date - project.planning_period.start_date).days + 1
         st.metric("Planning Days", days)
 
-st.title("Shift Prompt Studio")
-
 # ---------------------------------------------------------
 # Tab Structure
 # ---------------------------------------------------------
@@ -134,6 +132,7 @@ tabs = st.tabs([
     "📋 Rules",
     "📤 Import Schedule",
     "📅 Planning Period",
+    "📝 Prompt Preview",
     "🤖 LLM Settings",
     "✨ Generate",
     "👁️ Preview",
@@ -509,9 +508,56 @@ with tabs[4]:
             st.success(f"Planning period set: {days} days from {start_date} to {end_date}")
 
 # ---------------------------------------------------------
-# TAB 6: LLM Settings
+# TAB 6: Prompt Preview
 # ---------------------------------------------------------
 with tabs[5]:
+    st.subheader("System Prompt Preview")
+    st.caption("Preview the compiled system prompt that will be sent to the LLM")
+
+    # Compile the prompt
+    today_iso = datetime.now(ZoneInfo("Europe/Zurich")).date().isoformat()
+    planning_tuple = None
+    if project.planning_period:
+        planning_tuple = (
+            project.planning_period.start_date.isoformat(),
+            project.planning_period.end_date.isoformat()
+        )
+
+    compiled = build_system_prompt(
+        project,
+        schedule_payload=st.session_state.schedule_payload,
+        today_iso=today_iso,
+        planning_period=planning_tuple
+    )
+
+    # Display stats
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Characters", f"{len(compiled):,}")
+    with col2:
+        st.metric("Approx. Tokens", f"{len(compiled)//4:,}")
+    with col3:
+        if st.session_state.schedule_payload:
+            st.metric("Schedule Included", "✓ Yes")
+        else:
+            st.metric("Schedule Included", "✗ No")
+
+    # Display prompt
+    st.code(compiled, language="markdown")
+
+    # Download button
+    st.download_button(
+        "⬇️ Download Prompt (.txt)",
+        data=compiled,
+        file_name=f"{project.name.replace(' ','_')}_system_prompt.txt",
+        mime="text/plain",
+        use_container_width=True
+    )
+
+# ---------------------------------------------------------
+# TAB 7: LLM Settings
+# ---------------------------------------------------------
+with tabs[6]:
     st.subheader("LLM Configuration")
 
     model_family = st.selectbox("Model Family",
@@ -618,9 +664,9 @@ with tabs[5]:
             st.caption(ex['description'])
 
 # ---------------------------------------------------------
-# TAB 7: Generate Schedule
+# TAB 8: Generate Schedule
 # ---------------------------------------------------------
-with tabs[6]:
+with tabs[7]:
     st.subheader("Generate Schedule with LLM")
 
     if not project.employees:
@@ -694,9 +740,9 @@ with tabs[6]:
                     st.exception(e)
 
 # ---------------------------------------------------------
-# TAB 8: Preview
+# TAB 9: Preview
 # ---------------------------------------------------------
-with tabs[7]:
+with tabs[8]:
     st.subheader("Schedule Preview")
 
     if not st.session_state.generated_entries:
@@ -724,9 +770,9 @@ with tabs[7]:
             )
 
 # ---------------------------------------------------------
-# TAB 9: Export
+# TAB 10: Export
 # ---------------------------------------------------------
-with tabs[8]:
+with tabs[9]:
     st.subheader("Export to Microsoft Teams")
 
     if not st.session_state.generated_entries:

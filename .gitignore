@@ -107,3 +107,4 @@ $RECYCLE.BIN/
 data/
 logs/
 .venv/Lib/site-packages/distutils-precedence.pth
+.claude/agents/commit-creator.md
