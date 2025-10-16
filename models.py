@@ -1,8 +1,40 @@
 from __future__ import annotations
 from typing import List, Optional, Dict, Any, Tuple
 from pydantic import BaseModel, Field, ConfigDict
+from enum import Enum
+from datetime import date
 
 ShiftID = str
+
+class TeamsColor(str, Enum):
+    """Microsoft Teams Shift Colors with German names"""
+    WEISS = "1"              # Weiß - Operation Lead
+    BLAU = "2"               # Blau - Contact Team, Dispatcher (07:00-16:00)
+    GRUEN = "3"              # Grün - Contact Team, SOB roles
+    LILA = "4"               # Lila - Late shifts (10:00-19:00)
+    ROSA = "5"               # Rosa - Special assignments
+    GELB = "6"               # Gelb - Late shifts (09:00-18:00)
+    DUNKELBLAU = "8"         # Dunkelblau - Project work
+    DUNKELGRUEN = "9"        # Dunkelgrün - WoVe, PCV roles
+    DUNKELVIOLETT = "10"     # Dunkelviolett - Pikett
+    DUNKELROSA = "11"        # Dunkelrosa - People Developer
+    DUNKELGELB = "12"        # Dunkelgelb - Livechat shifts
+    GRAU = "13"              # Grau - Time-off
+
+TEAMS_COLOR_NAMES = {
+    "1": "Weiß",
+    "2": "Blau",
+    "3": "Grün",
+    "4": "Lila",
+    "5": "Rosa",
+    "6": "Gelb",
+    "8": "Dunkelblau",
+    "9": "Dunkelgrün",
+    "10": "Dunkelviolett",
+    "11": "Dunkelrosa",
+    "12": "Dunkelgelb",
+    "13": "Grau"
+}
 
 class ShiftTemplate(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -13,11 +45,17 @@ class ShiftTemplate(BaseModel):
     weekdays: List[str] = Field(default_factory=lambda: ["Mon","Tue","Wed","Thu","Fri"])
     required_count: Dict[str, int] = Field(default_factory=dict)  # per weekday required headcount
     notes: Optional[str] = None
+    # Teams-specific fields
+    color_code: Optional[str] = None  # "1" to "13" for Teams colors
+    unpaid_break_minutes: Optional[int] = None
+    teams_label: Optional[str] = None  # Display label for Teams
+    shared_status: Optional[str] = "1. Geteilt"  # Default shared status
+    concurrent_shifts: List[str] = Field(default_factory=list)  # IDs of shifts that can run simultaneously
 
 class Employee(BaseModel):
     id: str
     name: str
-    email: Optional[str] = None
+    email: Optional[str] = None  # Required for Teams export
     percent: Optional[int] = None  # e.g., 60, 80, 100
     roles: List[str] = Field(default_factory=list)  # allowed roles
     languages: List[str] = Field(default_factory=list)
@@ -28,6 +66,56 @@ class Employee(BaseModel):
     hard_constraints: List[str] = Field(default_factory=list)  # free-text
     soft_preferences: List[str] = Field(default_factory=list)  # free-text
     tags: List[str] = Field(default_factory=list)
+    # Teams-specific fields
+    group: Optional[str] = None  # Department/team grouping
+    teams_color: Optional[str] = None  # Optional color override
+
+class ScheduleEntry(BaseModel):
+    """Unified representation of shifts and time-off"""
+    model_config = ConfigDict(extra="ignore")
+    employee_name: str
+    employee_email: Optional[str] = None
+    group: Optional[str] = None
+    start_date: str  # ISO format YYYY-MM-DD
+    start_time: Optional[str] = None  # HH:MM
+    end_date: str  # ISO format YYYY-MM-DD
+    end_time: Optional[str] = None  # HH:MM
+    color_code: Optional[str] = None  # "1" to "13"
+    label: Optional[str] = None  # Bezeichnung
+    unpaid_break: Optional[int] = None
+    notes: Optional[str] = None
+    shared: Optional[str] = "1. Geteilt"
+    entry_type: str = "shift"  # "shift" or "time_off"
+    reason: Optional[str] = None  # For time-off entries (Grund für arbeitsfreie Zeit)
+
+class PlanningPeriod(BaseModel):
+    """Date range for schedule generation"""
+    start_date: date
+    end_date: date
+
+class MCPServerConfig(BaseModel):
+    """MCP Server configuration"""
+    name: str
+    command: str
+    args: List[str] = Field(default_factory=list)
+    env: Dict[str, str] = Field(default_factory=dict)
+
+class LLMConfig(BaseModel):
+    """LLM configuration including reasoning parameters"""
+    model_name: str = "claude-sonnet-4-20250514"
+    model_family: str = "claude"  # "claude", "openai", "custom"
+    # Claude-specific
+    budget_tokens: Optional[int] = None  # Min 1024, max 64000 for extended thinking
+    enable_interleaved_thinking: bool = False  # Requires beta header
+    # OpenAI-specific
+    reasoning_effort: Optional[str] = None  # "minimal", "low", "medium", "high"
+    # Common parameters
+    temperature: float = 0.2
+    max_tokens: int = 4096
+    enable_streaming: bool = True
+    json_mode: bool = True
+    # MCP integration
+    mcp_servers: List[MCPServerConfig] = Field(default_factory=list)
 
 class RuleSet(BaseModel):
     preamble: str = "You are a meticulous, constraint-aware shift planner."
@@ -40,11 +128,14 @@ class RuleSet(BaseModel):
 
 class Project(BaseModel):
     name: str = "Untitled"
-    version: str = "1.0"
+    version: str = "2.0"  # Updated version
     employees: List[Employee] = Field(default_factory=list)
     shifts: List[ShiftTemplate] = Field(default_factory=list)
     global_rules: RuleSet = Field(default_factory=RuleSet)
     custom_data: Dict[str, Any] = Field(default_factory=dict)
+    # New fields for enhanced functionality
+    llm_config: Optional[LLMConfig] = None
+    planning_period: Optional[PlanningPeriod] = None
 
     def as_compact_json(self) -> Dict[str, Any]:
         return {
