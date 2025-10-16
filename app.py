@@ -37,13 +37,24 @@ LANGUAGE_OPTIONS = [
 ]
 
 # ---------------------------------------------------------
-# Custom CSS for better dropdown visibility
+# Custom CSS for better UI
 # ---------------------------------------------------------
 st.markdown("""
 <style>
     /* Minimal spacing adjustments */
     .stSelectbox {
         margin-bottom: 1rem;
+    }
+
+    /* Allow tabs to wrap to multiple lines */
+    .stTabs [data-baseweb="tab-list"] {
+        flex-wrap: wrap !important;
+        gap: 0.5rem;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        white-space: nowrap;
+        padding: 0.5rem 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
