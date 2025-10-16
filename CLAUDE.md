@@ -147,6 +147,29 @@ The application includes a comprehensive color mapping system for Teams Shifts:
 
 **Note:** Color 7 is not used in the Teams system. When adding new roles, choose appropriate colors based on shift characteristics (time of day, role type, special duties).
 
+## Project Structure Documentation
+
+**When unsure where specific functionality is located, consult `projectstructure.md`** - a comprehensive reference documenting all files, classes, functions, data flows, and integration points with exact line numbers.
+
+**After making significant structural changes** (new files, major refactoring, new classes/functions, architectural changes), run the project-structure-analyzer agent to update `projectstructure.md`:
+
+```
+run the project analyzer agent
+```
+
+This ensures the documentation stays synchronized with the codebase.
+
+## Version Control Workflow
+
+**After completing all edits in a conversation**, use the commit-creator agent to save changes to git. This should be done at the end of a complete task when all file modifications are finished:
+
+The commit-creator agent will:
+- Review all staged and unstaged changes
+- Generate an appropriate commit message following the repository's style
+- Create the commit with proper attribution
+
+**Important:** Only create commits after a logical chunk of work is complete, not after individual file edits.
+
 ## Working with the Codebase
 
 ### Adding a New Employee Field
