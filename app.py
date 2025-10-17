@@ -471,16 +471,17 @@ with tabs[3]:
 
         teams_file = st.file_uploader("Teams Excel file", type=["xlsx","xls"], key="teams_multisheet_upload")
 
-        if st.button("📥 Parse Multi-Sheet File", key="parse_multisheet"):
+        if st.button("📥 Parse & Auto-Populate", key="parse_multisheet"):
             if teams_file is None:
                 st.error("Teams file is required")
             else:
                 try:
-                    from utils import parse_teams_excel_multisheet
+                    from utils import parse_teams_excel_multisheet, auto_populate_employees_from_members, generate_schedule_preview
 
                     today = datetime.now(ZoneInfo("Europe/Zurich")).date()
                     teams_bytes = teams_file.read()
 
+                    # Parse the Excel file
                     payload = parse_teams_excel_multisheet(
                         teams_bytes,
                         teams_file.name,
@@ -488,24 +489,85 @@ with tabs[3]:
                     )
 
                     st.session_state.schedule_payload = payload
-                    st.success("✅ Multi-sheet schedule imported successfully!")
 
-                    st.json(payload["meta"])
-
-                    # Show member data if available
+                    # Auto-populate employees from members data
+                    employee_changes = None
+                    needs_rerun = False
                     if payload.get("members"):
-                        with st.expander(f"📧 Members ({len(payload['members'])} found)"):
-                            members_df = pd.DataFrame(payload["members"])
-                            st.dataframe(members_df, use_container_width=True)
+                        employee_changes = auto_populate_employees_from_members(
+                            st.session_state.project,  # Use session_state.project directly
+                            payload["members"]
+                        )
 
-                    with st.expander("Fairness Hints (last 14 days)"):
+                        if employee_changes["added_count"] > 0:
+                            st.success(f"✅ Added {employee_changes['added_count']} new employee(s)")
+                            needs_rerun = True
+                        if employee_changes["existing_count"] > 0:
+                            st.info(f"ℹ️ {employee_changes['existing_count']} employee(s) already exist")
+
+                    # Generate preview
+                    preview = generate_schedule_preview(payload, employee_changes)
+                    st.session_state.schedule_preview = preview
+
+                    # Display preview summary
+                    st.markdown("### 📊 Import Summary")
+
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Past Entries", preview["summary"]["total_past_entries"])
+                    with col2:
+                        st.metric("Future Shifts", preview["summary"]["future_shifts"])
+                    with col3:
+                        st.metric("Future Time-Off", preview["summary"]["future_timeoff"])
+                    with col4:
+                        st.metric("Employees", preview["summary"]["unique_employees_in_schedule"])
+
+                    # Employee changes section
+                    if employee_changes:
+                        st.markdown("### 👥 Employee Changes")
+                        emp_col1, emp_col2 = st.columns(2)
+
+                        with emp_col1:
+                            st.metric("✅ Added", employee_changes["added_count"])
+                            if employee_changes["added_employees"]:
+                                with st.expander("View added employees"):
+                                    added_df = pd.DataFrame(employee_changes["added_employees"])
+                                    st.dataframe(added_df[["name", "email"]], use_container_width=True)
+
+                        with emp_col2:
+                            st.metric("ℹ️ Already Existed", employee_changes["existing_count"])
+                            if employee_changes["existing_employees"]:
+                                with st.expander("View existing employees"):
+                                    existing_df = pd.DataFrame(employee_changes["existing_employees"])
+                                    st.dataframe(existing_df[["name", "email"]], use_container_width=True)
+
+                    # Preview sections
+                    st.markdown("### 📅 Schedule Preview")
+
+                    # Future shifts preview
+                    if preview["sample_future_shifts"]:
+                        with st.expander(f"📆 Future Shifts (showing first 10 of {preview['summary']['future_shifts']})"):
+                            shifts_df = pd.DataFrame(preview["sample_future_shifts"])
+                            # Select relevant columns for display
+                            display_cols = [c for c in ["employee", "start_date", "start_time", "end_time", "label", "color_code"] if c in shifts_df.columns]
+                            st.dataframe(shifts_df[display_cols], use_container_width=True)
+
+                    # Future time-off preview
+                    if preview["sample_future_timeoff"]:
+                        with st.expander(f"🏖️ Future Time-Off (showing first 10 of {preview['summary']['future_timeoff']})"):
+                            timeoff_df = pd.DataFrame(preview["sample_future_timeoff"])
+                            display_cols = [c for c in ["employee", "start_date", "end_date", "reason", "label"] if c in timeoff_df.columns]
+                            st.dataframe(timeoff_df[display_cols], use_container_width=True)
+
+                    with st.expander("📋 Metadata"):
+                        st.json(payload["meta"])
+
+                    with st.expander("🔄 Fairness Hints (last 14 days)"):
                         st.json(payload.get("fairness_hints", {}))
 
-                    with st.expander("Preview: Past Entries (first 20)"):
-                        st.json(payload["past_entries"][:20])
-
-                    with st.expander("Preview: Future Entries (first 20)"):
-                        st.json(payload["future_entries"][:20])
+                    # Force UI refresh if employees were added
+                    if needs_rerun:
+                        st.rerun()
 
                 except Exception as e:
                     st.error(f"Import failed: {e}")
@@ -558,8 +620,29 @@ with tabs[3]:
                     st.exception(e)
                     st.session_state.schedule_payload = None
 
+    # Display loaded schedule summary
     if st.session_state.schedule_payload:
-        st.info("✅ Schedule data loaded and ready for generation")
+        st.markdown("---")
+        st.markdown("### ✅ Currently Loaded Schedule")
+
+        if "schedule_preview" in st.session_state and st.session_state.schedule_preview:
+            preview = st.session_state.schedule_preview
+            summary = preview["summary"]
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Future Shifts", summary["future_shifts"])
+            with col2:
+                st.metric("Future Time-Off", summary["future_timeoff"])
+            with col3:
+                st.metric("Employees", summary["unique_employees_in_schedule"])
+
+            if preview.get("employee_changes"):
+                emp_changes = preview["employee_changes"]
+                if emp_changes["added"] > 0 or emp_changes["already_existed"] > 0:
+                    st.caption(f"Employees: {emp_changes['added']} added, {emp_changes['already_existed']} already existed")
+
+        st.success("Schedule data loaded and ready for generation")
 
 # ---------------------------------------------------------
 # TAB 5: Planning Period
@@ -1183,29 +1266,135 @@ with tabs[8]:
 with tabs[9]:
     st.subheader("Schedule Preview")
 
-    if not st.session_state.generated_entries:
-        st.info("Generate a schedule first to see preview")
+    # Check what data we have available
+    has_imported = st.session_state.schedule_payload is not None
+    has_generated = st.session_state.generated_entries and len(st.session_state.generated_entries) > 0
+
+    if not has_imported and not has_generated:
+        st.info("📋 Import a Teams schedule or generate a new schedule to see preview")
     else:
-        entries = st.session_state.generated_entries
+        # Tabs for switching between imported and generated views
+        preview_tabs = []
+        if has_imported:
+            preview_tabs.append("📤 Imported Schedule")
+        if has_generated:
+            preview_tabs.append("✨ Generated Schedule")
 
-        # Render statistics
-        render_statistics(entries)
+        if len(preview_tabs) > 1:
+            preview_subtabs = st.tabs(preview_tabs)
+        else:
+            preview_subtabs = [st.container()]
 
-        st.markdown("---")
+        # IMPORTED SCHEDULE PREVIEW
+        if has_imported:
+            tab_idx = 0
+            with preview_subtabs[tab_idx]:
+                st.markdown("### Imported Teams Schedule Data")
 
-        # Render conflicts
-        render_conflicts(entries)
+                payload = st.session_state.schedule_payload
+                past_entries = payload.get("past_entries", [])
+                future_entries = payload.get("future_entries", [])
 
-        st.markdown("---")
+                # Statistics
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Total Past Entries", len(past_entries))
+                with col2:
+                    future_shifts = sum(1 for e in future_entries if e.get("entry_type") == "shift")
+                    st.metric("Future Shifts", future_shifts)
+                with col3:
+                    future_timeoff = sum(1 for e in future_entries if e.get("entry_type") == "time_off")
+                    st.metric("Future Time-Off", future_timeoff)
+                with col4:
+                    unique_emps = len(set(e.get("employee") or "Unknown" for e in past_entries + future_entries))
+                    st.metric("Unique Employees", unique_emps)
 
-        # Render calendar
-        if project.planning_period:
-            render_calendar_preview(
-                entries,
-                project.planning_period.start_date,
-                project.planning_period.end_date,
-                title="Generated Schedule Calendar"
-            )
+                st.markdown("---")
+
+                # Convert to ScheduleEntry objects for visualization
+                from models import ScheduleEntry
+
+                def _convert_to_entry(raw: Dict[str, Any]) -> ScheduleEntry:
+                    """Convert raw dict to ScheduleEntry"""
+                    return ScheduleEntry(
+                        employee_name=raw.get("employee", "Unknown"),
+                        employee_email=raw.get("email"),
+                        group=raw.get("group"),
+                        start_date=raw.get("start_date", raw.get("date", "")),
+                        start_time=raw.get("start_time"),
+                        end_date=raw.get("end_date", raw.get("date", "")),
+                        end_time=raw.get("end_time"),
+                        color_code=raw.get("color_code"),
+                        label=raw.get("label"),
+                        unpaid_break=raw.get("unpaid_break"),
+                        notes=raw.get("notes"),
+                        shared=raw.get("shared", "1. Geteilt"),
+                        entry_type=raw.get("entry_type", "shift"),
+                        reason=raw.get("reason")
+                    )
+
+                all_entries = [_convert_to_entry(e) for e in past_entries + future_entries]
+
+                # Determine date range from data
+                if all_entries:
+                    dates = [pd.to_datetime(e.start_date).date() for e in all_entries]
+                    min_date = min(dates)
+                    max_date = max(dates)
+
+                    # Calendar view
+                    st.markdown("### 📅 Calendar View")
+                    render_calendar_preview(
+                        all_entries,
+                        min_date,
+                        max_date,
+                        title="Imported Schedule Calendar"
+                    )
+
+                st.markdown("---")
+
+                # Data tables
+                st.markdown("### 📊 Data Tables")
+
+                # Past entries
+                if past_entries:
+                    with st.expander(f"⏮️ Past Entries ({len(past_entries)})"):
+                        past_df = pd.DataFrame(past_entries)
+                        display_cols = [c for c in ["employee", "start_date", "start_time", "end_time", "label", "entry_type"] if c in past_df.columns]
+                        st.dataframe(past_df[display_cols] if display_cols else past_df, use_container_width=True)
+
+                # Future entries
+                if future_entries:
+                    with st.expander(f"⏭️ Future Entries ({len(future_entries)})"):
+                        future_df = pd.DataFrame(future_entries)
+                        display_cols = [c for c in ["employee", "start_date", "start_time", "end_time", "label", "entry_type"] if c in future_df.columns]
+                        st.dataframe(future_df[display_cols] if display_cols else future_df, use_container_width=True)
+
+        # GENERATED SCHEDULE PREVIEW
+        if has_generated:
+            tab_idx = 1 if has_imported else 0
+            with preview_subtabs[tab_idx]:
+                st.markdown("### AI-Generated Schedule")
+
+                entries = st.session_state.generated_entries
+
+                # Render statistics
+                render_statistics(entries)
+
+                st.markdown("---")
+
+                # Render conflicts
+                render_conflicts(entries)
+
+                st.markdown("---")
+
+                # Render calendar
+                if project.planning_period:
+                    render_calendar_preview(
+                        entries,
+                        project.planning_period.start_date,
+                        project.planning_period.end_date,
+                        title="Generated Schedule Calendar"
+                    )
 
 # ---------------------------------------------------------
 # TAB 11: Export

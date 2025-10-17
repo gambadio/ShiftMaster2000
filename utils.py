@@ -514,3 +514,159 @@ def parse_teams_excel_multisheet(
         "fairness_hints": fairness_hints,
         "members": members_data,
     }
+
+# ----------------------------
+# Employee auto-population from Excel
+# ----------------------------
+def find_duplicate_employee(project: Project, name: str, email: str) -> Optional[Any]:
+    """
+    Check if an employee with the same name AND email already exists.
+
+    Args:
+        project: Current project with employees list
+        name: Employee name to check
+        email: Employee email to check
+
+    Returns:
+        Existing Employee object if found, None otherwise
+    """
+    from models import Employee
+
+    # Normalize for comparison
+    name_normalized = name.strip().lower()
+    email_normalized = email.strip().lower() if email else ""
+
+    for emp in project.employees:
+        emp_name_normalized = emp.name.strip().lower()
+        emp_email_normalized = emp.email.strip().lower() if emp.email else ""
+
+        # Match if both name AND email are the same
+        if emp_name_normalized == name_normalized and emp_email_normalized == email_normalized:
+            return emp
+
+    return None
+
+def auto_populate_employees_from_members(
+    project: Project,
+    members_data: List[Dict[str, str]]
+) -> Dict[str, Any]:
+    """
+    Auto-populate employees from Excel member data with duplicate detection.
+
+    Args:
+        project: Current project (will be modified in place)
+        members_data: List of member dicts with 'name' and 'email' keys
+
+    Returns:
+        Summary dict with counts of added/existing/updated employees
+    """
+    from models import Employee
+
+    added_count = 0
+    existing_count = 0
+    added_employees = []
+    existing_employees = []
+
+    for member in members_data:
+        name = member.get("name", "").strip()
+        email = member.get("email", "").strip()
+
+        if not name or not email:
+            continue
+
+        # Check for duplicates
+        existing = find_duplicate_employee(project, name, email)
+
+        if existing:
+            # Employee already exists
+            existing_count += 1
+            existing_employees.append({
+                "name": name,
+                "email": email,
+                "status": "already_exists"
+            })
+        else:
+            # Create new employee
+            new_emp = Employee(
+                id=f"emp_{len(project.employees) + 1}_{name.lower().replace(' ', '_')}",
+                name=name,
+                email=email,
+                roles=[],  # Will be inferred from shifts later
+                percent=100,  # Default to full-time
+            )
+            project.employees.append(new_emp)
+            added_count += 1
+            added_employees.append({
+                "name": name,
+                "email": email,
+                "status": "added",
+                "id": new_emp.id
+            })
+
+    return {
+        "added_count": added_count,
+        "existing_count": existing_count,
+        "total_members": len(members_data),
+        "added_employees": added_employees,
+        "existing_employees": existing_employees,
+    }
+
+def generate_schedule_preview(
+    schedule_payload: Dict[str, Any],
+    employee_changes: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Generate a preview of the parsed schedule and employee changes.
+
+    Args:
+        schedule_payload: The parsed schedule data
+        employee_changes: Optional summary from auto_populate_employees_from_members
+
+    Returns:
+        Preview data with statistics and sample entries
+    """
+    meta = schedule_payload.get("meta", {})
+    past_entries = schedule_payload.get("past_entries", [])
+    future_entries = schedule_payload.get("future_entries", [])
+    members = schedule_payload.get("members", [])
+
+    # Count entry types in future entries
+    shift_count = sum(1 for e in future_entries if e.get("entry_type") == "shift")
+    timeoff_count = sum(1 for e in future_entries if e.get("entry_type") == "time_off")
+
+    # Get unique employees in schedule
+    schedule_employees = set()
+    for entry in past_entries + future_entries:
+        emp_name = entry.get("employee")
+        if emp_name:
+            schedule_employees.add(emp_name)
+
+    # Sample entries for preview (first 10 future shifts)
+    sample_shifts = [e for e in future_entries if e.get("entry_type") == "shift"][:10]
+    sample_timeoff = [e for e in future_entries if e.get("entry_type") == "time_off"][:10]
+
+    preview = {
+        "summary": {
+            "total_past_entries": len(past_entries),
+            "total_future_entries": len(future_entries),
+            "future_shifts": shift_count,
+            "future_timeoff": timeoff_count,
+            "members_in_file": len(members),
+            "unique_employees_in_schedule": len(schedule_employees),
+        },
+        "metadata": meta,
+        "sample_future_shifts": sample_shifts,
+        "sample_future_timeoff": sample_timeoff,
+    }
+
+    # Add employee changes if provided
+    if employee_changes:
+        preview["employee_changes"] = {
+            "added": employee_changes.get("added_count", 0),
+            "already_existed": employee_changes.get("existing_count", 0),
+            "total_processed": employee_changes.get("total_members", 0),
+            "added_list": employee_changes.get("added_employees", []),
+            "existing_list": employee_changes.get("existing_employees", []),
+        }
+
+    return preview
