@@ -12,12 +12,14 @@ import asyncio
 
 from models import (
     Project, Employee, ShiftTemplate, LLMConfig, MCPServerConfig,
-    PlanningPeriod, ScheduleEntry, TEAMS_COLOR_NAMES
+    PlanningPeriod, ScheduleEntry, TEAMS_COLOR_NAMES, ProviderType,
+    LLMProviderConfig, ChatSession, ChatMessage
 )
 from utils import (
     save_project, load_project_dict, compile_prompt,
     parse_schedule_to_payload, parse_dual_schedule_files
 )
+from llm_client import create_llm_client, validate_provider_config
 from llm_manager import call_llm_with_reasoning, call_llm_sync
 from export_teams import export_to_teams_excel, schedule_entries_from_llm_output
 from preview import render_calendar_preview, render_statistics, render_conflicts
@@ -76,12 +78,18 @@ if "streaming_output" not in st.session_state:
     st.session_state.streaming_output = ""
 if "thinking_output" not in st.session_state:
     st.session_state.thinking_output = ""
+if "chat_session" not in st.session_state:
+    st.session_state.chat_session = ChatSession()
+if "llm_client" not in st.session_state:
+    st.session_state.llm_client = None
 
 project: Project = st.session_state.project
 
 # Initialize LLM config if not present
 if project.llm_config is None:
     project.llm_config = LLMConfig()
+if project.llm_config.provider_config is None:
+    project.llm_config.provider_config = LLMProviderConfig()
 
 # Initialize planning period if not present
 if project.planning_period is None:
@@ -145,6 +153,7 @@ tabs = st.tabs([
     "📅 Planning Period",
     "📝 Prompt Preview",
     "🤖 LLM Settings",
+    "💬 Chat",
     "✨ Generate",
     "👁️ Preview",
     "💾 Export"
@@ -569,115 +578,474 @@ with tabs[5]:
 # TAB 7: LLM Settings
 # ---------------------------------------------------------
 with tabs[6]:
-    st.subheader("LLM Configuration")
+    st.subheader("LLM Provider Configuration")
+    st.caption("Configure your LLM provider (OpenAI, OpenRouter, Azure, or Custom)")
 
-    model_family = st.selectbox("Model Family",
-        ["claude", "openai", "custom"],
-        index=["claude", "openai", "custom"].index(project.llm_config.model_family))
+    provider_config = project.llm_config.provider_config
 
-    project.llm_config.model_family = model_family
+    # Provider selection
+    provider = st.selectbox(
+        "Provider",
+        options=[p.value for p in ProviderType],
+        index=[p.value for p in ProviderType].index(provider_config.provider.value),
+        format_func=lambda x: x.title()
+    )
+    provider_config.provider = ProviderType(provider)
 
-    if model_family == "claude":
-        st.markdown("### Claude Settings")
+    st.markdown("---")
 
-        model = st.selectbox("Model", [
-            "claude-sonnet-4-5-20250514",
-            "claude-opus-4-1-20250514",
-            "claude-opus-4-20250514",
-            "claude-sonnet-4-20250514",
-            "claude-sonnet-3-7-20250219",
-        ], index=0)
+    # Provider-specific configuration
+    if provider_config.provider == ProviderType.OPENAI:
+        st.markdown("### OpenAI Configuration")
 
-        project.llm_config.model_name = model
+        provider_config.api_key = st.text_input(
+            "API Key",
+            value=provider_config.api_key,
+            type="password",
+            help="Your OpenAI API key (starts with sk-)"
+        )
 
-        enable_thinking = st.checkbox("Enable Extended Thinking", value=project.llm_config.budget_tokens is not None)
+        # Fetch models button
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("🔄 Fetch Models"):
+                if provider_config.api_key:
+                    try:
+                        temp_client = create_llm_client(project.llm_config)
+                        models = temp_client.fetch_models()
+                        provider_config.available_models = models
+                        st.success(f"Fetched {len(models)} models")
+                    except Exception as e:
+                        st.error(f"Failed to fetch models: {e}")
+                else:
+                    st.error("API key required")
 
-        if enable_thinking:
-            budget = st.slider("Thinking Budget (tokens)", 1024, 64000,
-                value=project.llm_config.budget_tokens if project.llm_config.budget_tokens else 10000, step=1024)
-            project.llm_config.budget_tokens = budget
+        with col2:
+            # Model selection
+            if provider_config.available_models:
+                model_options = provider_config.available_models
+            else:
+                model_options = ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o3-mini"]
 
-            enable_interleaved = st.checkbox("Enable Interleaved Thinking (for tool use)",
-                value=project.llm_config.enable_interleaved_thinking)
-            project.llm_config.enable_interleaved_thinking = enable_interleaved
+            provider_config.model = st.selectbox(
+                "Model",
+                options=model_options,
+                index=model_options.index(provider_config.model) if provider_config.model in model_options else 0
+            )
 
-            st.info("Extended thinking allows Claude to reason more deeply. Higher budgets = more thorough reasoning.")
-        else:
-            project.llm_config.budget_tokens = None
-            project.llm_config.enable_interleaved_thinking = False
-
-    elif model_family == "openai":
-        st.markdown("### OpenAI Settings")
-
-        model = st.selectbox("Model", [
-            "gpt-5",
-            "o3-mini",
-            "o1",
-            "gpt-4o",
-        ], index=0)
-
-        project.llm_config.model_name = model
-
-        if model in ["gpt-5", "o3-mini", "o1"]:
-            reasoning_effort = st.select_slider("Reasoning Effort",
+        # Reasoning effort for o1/o3 models
+        if provider_config.model and any(x in provider_config.model for x in ["o1", "o3", "gpt-5"]):
+            project.llm_config.reasoning_effort = st.select_slider(
+                "Reasoning Effort",
                 options=["minimal", "low", "medium", "high"],
-                value=project.llm_config.reasoning_effort if project.llm_config.reasoning_effort else "medium")
-            project.llm_config.reasoning_effort = reasoning_effort
+                value=project.llm_config.reasoning_effort or "medium",
+                help="Controls thinking depth for reasoning models"
+            )
 
-            st.info("Reasoning effort controls how long the model thinks. Higher = more thorough but slower.")
-        else:
-            project.llm_config.reasoning_effort = None
+    elif provider_config.provider == ProviderType.OPENROUTER:
+        st.markdown("### OpenRouter Configuration")
 
-    else:  # custom
-        st.markdown("### Custom Model Settings")
-        project.llm_config.model_name = st.text_input("Model name", value=project.llm_config.model_name)
+        provider_config.api_key = st.text_input(
+            "API Key",
+            value=provider_config.api_key,
+            type="password",
+            help="Your OpenRouter API key (starts with sk-or-v1-)"
+        )
 
-    st.markdown("### Common Settings")
+        # OpenRouter-specific fields
+        provider_config.http_referer = st.text_input(
+            "HTTP Referer (optional)",
+            value=provider_config.http_referer or "",
+            help="Your site URL for rankings on openrouter.ai"
+        )
+
+        provider_config.x_title = st.text_input(
+            "App Title (optional)",
+            value=provider_config.x_title or "",
+            help="Your app name for display on openrouter.ai"
+        )
+
+        # Model selection with provider prefix
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("🔄 Fetch Models"):
+                if provider_config.api_key:
+                    try:
+                        temp_client = create_llm_client(project.llm_config)
+                        models = temp_client.fetch_models()
+                        provider_config.available_models = models
+                        st.success(f"Fetched {len(models)} models")
+                    except Exception as e:
+                        st.error(f"Failed to fetch models: {e}")
+                else:
+                    st.error("API key required")
+
+        with col2:
+            if provider_config.available_models:
+                model_options = provider_config.available_models
+            else:
+                model_options = [
+                    "openai/gpt-4o",
+                    "anthropic/claude-3.7-sonnet",
+                    "google/gemini-pro",
+                    "meta-llama/llama-3.1-405b"
+                ]
+
+            provider_config.model = st.selectbox(
+                "Model",
+                options=model_options,
+                index=model_options.index(provider_config.model) if provider_config.model in model_options else 0,
+                help="Use provider/model format (e.g., openai/gpt-4o)"
+            )
+
+    elif provider_config.provider == ProviderType.AZURE:
+        st.markdown("### Azure OpenAI Configuration")
+
+        provider_config.api_key = st.text_input(
+            "API Key",
+            value=provider_config.api_key,
+            type="password",
+            help="Your Azure OpenAI API key"
+        )
+
+        provider_config.azure_endpoint = st.text_input(
+            "Azure Endpoint",
+            value=provider_config.azure_endpoint or "",
+            placeholder="https://YOUR-RESOURCE.openai.azure.com/",
+            help="Your Azure OpenAI resource endpoint"
+        )
+
+        provider_config.azure_deployment = st.text_input(
+            "Deployment Name",
+            value=provider_config.azure_deployment or "",
+            help="Name of your deployed model (not the model name)"
+        )
+
+        provider_config.api_version = st.text_input(
+            "API Version",
+            value=provider_config.api_version,
+            help="Azure API version (e.g., 2024-10-21)"
+        )
+
+        provider_config.model = provider_config.azure_deployment or "gpt-4o"
+
+    elif provider_config.provider == ProviderType.CUSTOM:
+        st.markdown("### Custom Endpoint Configuration")
+
+        provider_config.api_key = st.text_input(
+            "API Key (optional)",
+            value=provider_config.api_key,
+            type="password",
+            help="Some custom endpoints don't require an API key"
+        )
+
+        provider_config.base_url = st.text_input(
+            "Base URL",
+            value=provider_config.base_url or "",
+            placeholder="http://localhost:8000/v1",
+            help="OpenAI-compatible base URL"
+        )
+
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("🔄 Fetch Models"):
+                if provider_config.base_url:
+                    try:
+                        temp_client = create_llm_client(project.llm_config)
+                        models = temp_client.fetch_models()
+                        provider_config.available_models = models
+                        st.success(f"Fetched {len(models)} models")
+                    except Exception as e:
+                        st.warning(f"Could not fetch models: {e}")
+                else:
+                    st.error("Base URL required")
+
+        with col2:
+            if provider_config.available_models:
+                model_options = provider_config.available_models
+            else:
+                model_options = ["custom-model"]
+
+            provider_config.model = st.text_input(
+                "Model Name",
+                value=provider_config.model,
+                help="Model identifier for your custom endpoint"
+            )
+
+    st.markdown("---")
+    st.markdown("### Generation Parameters")
 
     col1, col2 = st.columns(2)
     with col1:
-        temp = st.slider("Temperature", 0.0, 1.0, project.llm_config.temperature, 0.05)
-        project.llm_config.temperature = temp
+        project.llm_config.temperature = st.slider(
+            "Temperature",
+            0.0, 2.0,
+            project.llm_config.temperature,
+            0.05,
+            help="Controls randomness (0=deterministic, 2=very random)"
+        )
+
+        project.llm_config.top_p = st.slider(
+            "Top P",
+            0.0, 1.0,
+            project.llm_config.top_p,
+            0.05,
+            help="Nucleus sampling threshold"
+        )
 
     with col2:
-        max_tok = st.number_input("Max tokens", 1000, 16000, project.llm_config.max_tokens, 100)
-        project.llm_config.max_tokens = max_tok
+        project.llm_config.max_tokens = st.number_input(
+            "Max Tokens",
+            min_value=100,
+            max_value=32000,
+            value=project.llm_config.max_tokens,
+            step=100,
+            help="Maximum response length"
+        )
 
-    enable_streaming = st.checkbox("Enable streaming", value=project.llm_config.enable_streaming)
-    project.llm_config.enable_streaming = enable_streaming
+        project.llm_config.seed = st.number_input(
+            "Seed (optional)",
+            min_value=0,
+            max_value=999999,
+            value=project.llm_config.seed or 0,
+            help="For reproducible outputs (0 = random)"
+        )
+        if project.llm_config.seed == 0:
+            project.llm_config.seed = None
 
-    json_mode = st.checkbox("JSON mode", value=project.llm_config.json_mode)
-    project.llm_config.json_mode = json_mode
+    col3, col4 = st.columns(2)
+    with col3:
+        project.llm_config.frequency_penalty = st.slider(
+            "Frequency Penalty",
+            -2.0, 2.0,
+            project.llm_config.frequency_penalty,
+            0.1,
+            help="Reduce repetition of tokens"
+        )
 
-    st.markdown("### MCP Servers (Optional)")
-    st.caption("Model Context Protocol allows LLM to use external tools")
+    with col4:
+        project.llm_config.presence_penalty = st.slider(
+            "Presence Penalty",
+            -2.0, 2.0,
+            project.llm_config.presence_penalty,
+            0.1,
+            help="Encourage new topics"
+        )
 
-    if st.button("➕ Add MCP Server"):
-        project.llm_config.mcp_servers.append(MCPServerConfig(name="", command=""))
+    project.llm_config.enable_streaming = st.checkbox(
+        "Enable Streaming",
+        value=project.llm_config.enable_streaming,
+        help="Stream responses token by token"
+    )
 
-    for i, server in enumerate(project.llm_config.mcp_servers):
-        with st.expander(f"MCP Server {i+1}: {server.name or 'Unnamed'}"):
-            server.name = st.text_input("Name", value=server.name, key=f"mcp_name_{i}")
+    project.llm_config.json_mode = st.checkbox(
+        "JSON Mode",
+        value=project.llm_config.json_mode,
+        help="Request JSON-formatted output (if supported by provider)"
+    )
+
+    # Validate configuration
+    st.markdown("---")
+    st.markdown("### Configuration Status")
+
+    is_valid, error_msg = validate_provider_config(provider_config)
+    if is_valid:
+        st.success("✅ Configuration is valid")
+        # Try to create client
+        try:
+            client = create_llm_client(project.llm_config)
+            st.session_state.llm_client = client
+            st.info("✅ LLM client initialized successfully")
+        except Exception as e:
+            st.error(f"❌ Failed to initialize client: {e}")
+            st.session_state.llm_client = None
+    else:
+        st.error(f"❌ Invalid configuration: {error_msg}")
+        st.session_state.llm_client = None
+
+    # MCP Servers
+    with st.expander("🔧 MCP Servers (Optional)"):
+        st.caption("Model Context Protocol allows LLM to use external tools")
+
+        if st.button("➕ Add MCP Server"):
+            project.llm_config.mcp_servers.append(MCPServerConfig(name="", command=""))
+            st.rerun()
+
+        for i, server in enumerate(project.llm_config.mcp_servers):
+            st.markdown(f"#### MCP Server {i+1}: {server.name or 'Unnamed'}")
+
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                server.name = st.text_input("Name", value=server.name, key=f"mcp_name_{i}")
+            with col2:
+                if st.button("🗑️ Remove", key=f"mcp_remove_{i}"):
+                    project.llm_config.mcp_servers.pop(i)
+                    st.rerun()
+
             server.command = st.text_input("Command", value=server.command, key=f"mcp_cmd_{i}")
-
             args_str = st.text_input("Args (space-separated)", value=" ".join(server.args), key=f"mcp_args_{i}")
             server.args = args_str.split() if args_str.strip() else []
+            st.markdown("---")
 
-            if st.button("Remove", key=f"mcp_remove_{i}"):
-                project.llm_config.mcp_servers.pop(i)
-                st.rerun()
-
-    with st.expander("📚 MCP Server Examples"):
-        examples = get_mcp_server_examples()
-        for ex in examples:
-            st.markdown(f"**{ex['name']}**")
-            st.code(f"Command: {ex['command']}\nArgs: {' '.join(ex['args'])}")
-            st.caption(ex['description'])
+        with st.expander("📚 MCP Server Examples"):
+            examples = get_mcp_server_examples()
+            for ex in examples:
+                st.markdown(f"**{ex['name']}**")
+                st.code(f"Command: {ex['command']}\nArgs: {' '.join(ex['args'])}")
+                st.caption(ex['description'])
 
 # ---------------------------------------------------------
-# TAB 8: Generate Schedule
+# TAB 8: Chat Interface
 # ---------------------------------------------------------
 with tabs[7]:
+    st.subheader("💬 Chat with LLM")
+    st.caption("Interactively refine your schedule using conversation")
+
+    if not st.session_state.llm_client:
+        st.warning("⚠️ Please configure and validate your LLM settings first (LLM Settings tab)")
+    else:
+        client = st.session_state.llm_client
+        session = st.session_state.chat_session
+
+        # Display token usage stats
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Prompt Tokens", f"{session.total_prompt_tokens:,}")
+        with col2:
+            st.metric("Completion Tokens", f"{session.total_completion_tokens:,}")
+        with col3:
+            if session.total_reasoning_tokens > 0:
+                st.metric("Reasoning Tokens", f"{session.total_reasoning_tokens:,}")
+            else:
+                st.metric("Total Tokens", f"{session.total_prompt_tokens + session.total_completion_tokens:,}")
+
+        st.markdown("---")
+
+        # Display conversation history
+        st.markdown("### Conversation")
+
+        if not session.messages:
+            st.info("Start a conversation to generate or refine your schedule")
+        else:
+            for i, msg in enumerate(session.messages):
+                if msg.role == "system":
+                    continue  # Don't display system messages
+
+                with st.chat_message(msg.role):
+                    st.markdown(msg.content)
+
+                    # Show reasoning tokens for assistant messages
+                    if msg.role == "assistant" and msg.reasoning_tokens:
+                        st.caption(f"🧠 Reasoning tokens: {msg.reasoning_tokens:,}")
+
+        # Chat input
+        st.markdown("---")
+
+        # Option to include system prompt
+        include_system_prompt = st.checkbox(
+            "Include compiled system prompt",
+            value=len(session.messages) == 0,
+            help="For the first message, include the full shift planning context"
+        )
+
+        user_input = st.text_area(
+            "Your message",
+            height=100,
+            placeholder="E.g., 'Generate a schedule for next week' or 'Can you swap Alice and Bob on Monday?'",
+            key="chat_input"
+        )
+
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            send_button = st.button("📤 Send", type="primary", use_container_width=True)
+        with col2:
+            clear_button = st.button("🗑️ Clear Chat", use_container_width=True)
+        with col3:
+            if st.button("💾 Save to History", use_container_width=True):
+                if session.messages:
+                    st.session_state.llm_conversation.append({
+                        "timestamp": datetime.now().isoformat(),
+                        "messages": [m.model_dump() for m in session.messages],
+                        "stats": {
+                            "prompt_tokens": session.total_prompt_tokens,
+                            "completion_tokens": session.total_completion_tokens,
+                            "reasoning_tokens": session.total_reasoning_tokens
+                        }
+                    })
+                    st.success("💾 Conversation saved to history")
+
+        if clear_button:
+            st.session_state.chat_session = ChatSession()
+            st.rerun()
+
+        if send_button and user_input.strip():
+            # Prepare system prompt if requested
+            system_prompt = None
+            if include_system_prompt and not session.messages:
+                # Compile the full system prompt
+                today_iso = datetime.now(ZoneInfo("Europe/Zurich")).date().isoformat()
+                planning_tuple = None
+                if project.planning_period:
+                    planning_tuple = (
+                        project.planning_period.start_date.isoformat(),
+                        project.planning_period.end_date.isoformat()
+                    )
+
+                system_prompt = build_system_prompt(
+                    project,
+                    schedule_payload=st.session_state.schedule_payload,
+                    today_iso=today_iso,
+                    planning_period=planning_tuple
+                )
+
+                # Add MCP tools if configured
+                if project.llm_config.mcp_servers:
+                    mcp_tools_section = format_mcp_tools_for_prompt(project.llm_config.mcp_servers)
+                    system_prompt += "\n\n" + mcp_tools_section
+
+            # Send message
+            with st.spinner("🤔 Thinking..."):
+                try:
+                    response_msg = client.chat(
+                        user_message=user_input,
+                        session=session,
+                        system_prompt=system_prompt
+                    )
+
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"Chat failed: {e}")
+                    st.exception(e)
+
+        # Conversation history
+        if st.session_state.llm_conversation:
+            with st.expander(f"📚 Conversation History ({len(st.session_state.llm_conversation)} saved)"):
+                for idx, conv in enumerate(reversed(st.session_state.llm_conversation)):
+                    st.markdown(f"#### Conversation {len(st.session_state.llm_conversation) - idx}")
+                    st.caption(f"Saved: {conv['timestamp']}")
+
+                    stats = conv['stats']
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Prompt", f"{stats['prompt_tokens']:,}")
+                    with col2:
+                        st.metric("Completion", f"{stats['completion_tokens']:,}")
+                    with col3:
+                        if stats.get('reasoning_tokens', 0) > 0:
+                            st.metric("Reasoning", f"{stats['reasoning_tokens']:,}")
+
+                    with st.expander("View Messages"):
+                        for msg in conv['messages']:
+                            if msg['role'] != 'system':
+                                st.markdown(f"**{msg['role'].title()}:**")
+                                st.text(msg['content'][:500] + ("..." if len(msg['content']) > 500 else ""))
+                                st.markdown("---")
+
+# ---------------------------------------------------------
+# TAB 9: Generate Schedule
+# ---------------------------------------------------------
+with tabs[8]:
     st.subheader("Generate Schedule with LLM")
 
     if not project.employees:
@@ -751,9 +1119,9 @@ with tabs[7]:
                     st.exception(e)
 
 # ---------------------------------------------------------
-# TAB 9: Preview
+# TAB 10: Preview
 # ---------------------------------------------------------
-with tabs[8]:
+with tabs[9]:
     st.subheader("Schedule Preview")
 
     if not st.session_state.generated_entries:
@@ -781,9 +1149,9 @@ with tabs[8]:
             )
 
 # ---------------------------------------------------------
-# TAB 10: Export
+# TAB 11: Export
 # ---------------------------------------------------------
-with tabs[9]:
+with tabs[10]:
     st.subheader("Export to Microsoft Teams")
 
     if not st.session_state.generated_entries:

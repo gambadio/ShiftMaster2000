@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Knowledge Base
+
+This project maintains a `knowledge.md` file containing researched technical knowledge, API documentation, coding principles, and best practices. **You MUST consult this file** when working on tasks related to:
+- External APIs and their integration patterns
+- Framework-specific conventions and best practices
+- Architectural decisions and design patterns
+- Library usage and configuration
+- Any technical specifications documented therein
+
+Always check `knowledge.md` first before making assumptions about how to implement features or solve technical problems.
+
+---
+
 ## Project Overview
 
 **Shift Prompt Studio** is a Streamlit application for creating bulletproof system prompts for LLM-driven shift planning. It manages employees, shift templates, scheduling rules, and compiles comprehensive prompts that can be tested against OpenAI-compatible APIs.

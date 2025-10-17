@@ -100,22 +100,85 @@ class MCPServerConfig(BaseModel):
     args: List[str] = Field(default_factory=list)
     env: Dict[str, str] = Field(default_factory=dict)
 
+class ProviderType(str, Enum):
+    """Supported LLM provider types"""
+    OPENAI = "openai"
+    OPENROUTER = "openrouter"
+    AZURE = "azure"
+    CUSTOM = "custom"
+
+class LLMProviderConfig(BaseModel):
+    """Provider-specific configuration"""
+    model_config = ConfigDict(extra="ignore")
+
+    provider: ProviderType = ProviderType.OPENAI
+    api_key: str = ""
+
+    # OpenAI/OpenRouter/Custom
+    base_url: Optional[str] = None  # Custom endpoint or OpenRouter URL
+
+    # Azure-specific
+    azure_endpoint: Optional[str] = None  # https://YOUR-RESOURCE.openai.azure.com/
+    azure_deployment: Optional[str] = None  # Deployment name
+    api_version: str = "2024-10-21"  # Azure API version
+
+    # OpenRouter-specific
+    http_referer: Optional[str] = None  # For rankings
+    x_title: Optional[str] = None  # App name on openrouter.ai
+
+    # Model selection
+    model: str = "gpt-4o"  # Default model or deployment name
+    available_models: List[str] = Field(default_factory=list)  # Cached model list
+
+    def get_base_url(self) -> Optional[str]:
+        """Get the appropriate base URL for this provider"""
+        if self.provider == ProviderType.OPENROUTER:
+            return "https://openrouter.ai/api/v1"
+        return self.base_url
+
 class LLMConfig(BaseModel):
-    """LLM configuration including reasoning parameters"""
-    model_name: str = "claude-sonnet-4-20250514"
-    model_family: str = "claude"  # "claude", "openai", "custom"
-    # Claude-specific
-    budget_tokens: Optional[int] = None  # Min 1024, max 64000 for extended thinking
-    enable_interleaved_thinking: bool = False  # Requires beta header
-    # OpenAI-specific
-    reasoning_effort: Optional[str] = None  # "minimal", "low", "medium", "high"
-    # Common parameters
+    """Complete LLM configuration for scheduling tasks"""
+    model_config = ConfigDict(extra="ignore")
+
+    # Provider configuration
+    provider_config: LLMProviderConfig = Field(default_factory=LLMProviderConfig)
+
+    # Generation parameters
     temperature: float = 0.2
     max_tokens: int = 4096
-    enable_streaming: bool = True
-    json_mode: bool = True
+    top_p: float = 1.0
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+
+    # Response format
+    json_mode: bool = True  # Request JSON output
+    enable_streaming: bool = True  # Stream responses
+
+    # OpenAI reasoning models (o1, o3)
+    reasoning_effort: Optional[str] = None  # "minimal", "low", "medium", "high"
+
+    # Advanced features
+    seed: Optional[int] = None  # For reproducible outputs
+    stop_sequences: List[str] = Field(default_factory=list)
+
     # MCP integration
     mcp_servers: List[MCPServerConfig] = Field(default_factory=list)
+    enable_mcp: bool = False
+
+class ChatMessage(BaseModel):
+    """Chat message in conversation history"""
+    role: str  # "system", "user", "assistant"
+    content: str
+    timestamp: Optional[str] = None
+    reasoning_tokens: Optional[int] = None  # For o1/o3 models
+
+class ChatSession(BaseModel):
+    """Chat session state for interactive planning"""
+    messages: List[ChatMessage] = Field(default_factory=list)
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_reasoning_tokens: int = 0
+    session_id: Optional[str] = None
 
 class RuleSet(BaseModel):
     preamble: str = "You are a meticulous, constraint-aware shift planner."
