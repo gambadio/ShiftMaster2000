@@ -212,9 +212,9 @@ Allow employees to work multiple shifts simultaneously:
 ## Support
 
 ### Documentation
-- `CLAUDE.md` - Project architecture
-- `IMPLEMENTATION_SUMMARY.md` - Technical details
-- `QUICKSTART.md` - This file
+- `docs/ARCHITECTURE.md` - Project architecture and development guide
+- `docs/SOLVER_INTEGRATION.md` - Constraint solver integration details
+- `docs/QUICKSTART.md` - This file
 
 ### Common Issues
 1. **Missing API key**: LLM features require API keys (set in sidebar)

@@ -4,7 +4,7 @@ Unified LLM client supporting multiple providers (OpenAI, OpenRouter, Azure, Cus
 This module provides a consistent interface for interacting with various LLM providers,
 handling provider-specific quirks, authentication, and response formats.
 
-Based on research documented in knowledge.md
+Based on research documented in docs/KNOWLEDGE_BASE.md
 """
 
 from __future__ import annotations
