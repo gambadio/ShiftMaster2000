@@ -69,27 +69,28 @@ def render_calendar_preview(
             width: 100%;
             font-size: 13px;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #fff;
+            background: #0d1b2a;
         }
         .teams-schedule th {
-            background-color: #f3f2f1;
-            border: 1px solid #edebe9;
+            background-color: #1b263b;
+            border: 1px solid #2d3748;
             padding: 12px 8px;
             text-align: center;
             font-weight: 600;
             position: sticky;
             top: 0;
             z-index: 10;
+            color: #e2e8f0;
         }
         .teams-schedule td {
-            border: 1px solid #edebe9;
+            border: 1px solid #2d3748;
             padding: 6px;
             vertical-align: top;
             min-height: 60px;
         }
         .employee-cell {
             font-weight: 600;
-            background-color: #faf9f8;
+            background-color: #1b263b;
             padding: 12px 8px !important;
             white-space: nowrap;
             max-width: 150px;
@@ -98,16 +99,16 @@ def render_calendar_preview(
         }
         .employee-name {
             font-size: 14px;
-            color: #323130;
+            color: #e2e8f0;
         }
         .employee-hours {
             font-size: 11px;
-            color: #605e5c;
+            color: #cbd5e0;
             margin-top: 2px;
         }
         .day-cell {
             min-width: 140px;
-            background-color: #ffffff;
+            background-color: #0d1b2a;
         }
         .shift-block {
             margin: 3px 0;
@@ -146,19 +147,19 @@ def render_calendar_preview(
         .color-13 { background-color: #a19f9d; color: white; }
         .week-header {
             font-size: 11px;
-            color: #605e5c;
+            color: #cbd5e0;
             text-align: left;
             padding: 4px 8px !important;
-            background-color: #faf9f8 !important;
+            background-color: #1b263b !important;
         }
         .date-header {
             font-size: 12px;
-            color: #323130;
+            color: #e2e8f0;
             font-weight: 600;
         }
         .hours-total {
             font-size: 11px;
-            color: #605e5c;
+            color: #cbd5e0;
             display: block;
             margin-top: 2px;
         }
@@ -190,15 +191,31 @@ def render_calendar_preview(
     # Header row with week info
     html_parts.append('<thead>')
 
-    # Week row
-    week_num = dates[0].isocalendar()[1] if dates else 0
-    html_parts.append(f'<tr><th class="week-header">Week: {week_num}</th>')
+    # Week row - show week number when it changes
+    html_parts.append('<tr><th class="week-header">Week</th>')
+    current_week = None
     for d in dates:
-        total_hrs = sum(
-            len([e for e in grid_data[emp][d] if e.entry_type == "shift"]) * 8  # Rough estimate
-            for emp in employees
-        )
-        html_parts.append(f'<th class="week-header">{total_hrs} Hrs</th>')
+        week_num = d.isocalendar()[1]
+        # Show week number when it changes
+        if week_num != current_week:
+            html_parts.append(f'<th class="week-header">Week {week_num}</th>')
+            current_week = week_num
+        else:
+            html_parts.append(f'<th class="week-header"></th>')
+    html_parts.append('</tr>')
+
+    # Month row - show month name when it changes
+    html_parts.append('<tr><th class="week-header">Month</th>')
+    current_month = None
+    for d in dates:
+        month_name = d.strftime("%B %Y")  # e.g., "September 2025"
+        month_key = (d.year, d.month)
+        # Show month name when it changes
+        if month_key != current_month:
+            html_parts.append(f'<th class="week-header">{month_name}</th>')
+            current_month = month_key
+        else:
+            html_parts.append(f'<th class="week-header"></th>')
     html_parts.append('</tr>')
 
     # Date row
@@ -206,7 +223,7 @@ def render_calendar_preview(
     for d in dates:
         day_name = d.strftime("%a")
         date_str = d.strftime("%m/%d")
-        html_parts.append(f'<th><div class="date-header">{d.day}</div><div style="font-size:10px;color:#605e5c;">{day_name}</div></th>')
+        html_parts.append(f'<th><div class="date-header">{d.day}</div><div style="font-size:10px;color:#cbd5e0;">{day_name}</div></th>')
     html_parts.append('</tr>')
     html_parts.append('</thead>')
 
@@ -240,7 +257,8 @@ def render_calendar_preview(
                     label = entry.reason or "Time Off"
                     color_class = "color-13"  # Force grey for time-off
                 else:
-                    label = entry.label or "Shift"
+                    # Show notes first (e.g., "Contact Team", "Dispatcher"), then label, then default
+                    label = entry.notes or entry.label or "Shift"
 
                 html_parts.append(f'<div class="shift-block {color_class}">')
                 html_parts.append(f'<span class="shift-label">{label}</span>')
