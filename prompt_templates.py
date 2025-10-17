@@ -3,9 +3,40 @@ from typing import Dict, Any, Optional
 import json
 from datetime import timedelta
 from models import Project, TEAMS_COLOR_NAMES
+import streamlit as st
 
 def json_block(data: Dict[str, Any]) -> str:
     return "```json\n" + json.dumps(data, ensure_ascii=False, indent=2) + "\n```"
+
+
+def get_solver_tool_definition_if_enabled() -> str:
+    """
+    Returns solver tool definition if enabled and available.
+
+    This function checks if constraint solver mode is enabled in the session state
+    and if MiniZinc is available on the system. If both conditions are met, it
+    returns the full solver tool definition for inclusion in the system prompt.
+
+    Returns:
+        Markdown string with tool definition, or empty string if disabled/unavailable
+    """
+    # Check if solver mode is enabled in session state
+    if not st.session_state.get("enable_solver", False):
+        return ""
+
+    # Check if MiniZinc is available
+    try:
+        from solver_utils import check_minizinc_available
+        from solver_models import SOLVER_TOOL_DEFINITION
+
+        is_available, _ = check_minizinc_available()
+        if not is_available:
+            return ""
+
+        return "\n\n" + SOLVER_TOOL_DEFINITION
+    except ImportError:
+        # Solver modules not available, silently skip
+        return ""
 
 TEAMS_COLOR_SPEC = """
 ### Microsoft Teams Shift Colors
@@ -121,5 +152,10 @@ Weekdays included: {', '.join(set(weekdays))}
             schedule_json=json_block(schedule_payload)
         )
         compiled += "\n\n" + addendum
+
+    # Add solver tool definition if enabled
+    solver_tool_def = get_solver_tool_definition_if_enabled()
+    if solver_tool_def:
+        compiled += solver_tool_def
 
     return compiled

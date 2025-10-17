@@ -66,16 +66,60 @@ The application is built around Pydantic models that enforce structure and valid
 
 All models use `model_config = ConfigDict(extra="ignore")` where applicable to gracefully handle extra fields in JSON files.
 
+### Constraint Solver Integration (Optional)
+
+The application includes an **optional** MiniZinc constraint programming solver for mathematically optimal schedule generation:
+
+**Architecture (Sophie's Pattern):**
+- **Fixed Model**: Pre-written `shift_schedule.mzn` defines optimization logic
+- **JSON Contract**: LLM sends structured data (never writes code)
+- **Tool Calling**: LLM decides when to use solver vs. AI-only mode
+- **Graceful Degradation**: App works perfectly without MiniZinc installed
+
+**Key Files:**
+- `solver_models.py`: Pydantic schemas for solver request/response
+- `solver_service.py`: MiniZinc execution wrapper with Python API
+- `shift_schedule.mzn`: Fixed constraint model (hard + soft constraints)
+- `solver_utils.py`: Detection, validation, installation guidance
+
+**Integration Points:**
+- `prompt_templates.py`: Conditional tool definition injection
+- `llm_manager.py`: Tool calling handler with session state injection
+- `app.py` (Planning tab): UI configuration for weights, rules, timeout
+
+**Installation:**
+```bash
+# Python package (already in requirements.txt)
+pip install minizinc
+
+# Binary (one-time, optional)
+brew install minizinc  # macOS
+# or download from https://www.minizinc.org/software.html
+```
+
+**Usage:**
+1. Enable "Constraint Solver Mode" in Planning tab
+2. Configure weights and constraints via UI
+3. Generate schedule - LLM automatically uses solver when appropriate
+4. Review violations and penalties in output
+
+See `SOLVER_SETUP.md` for detailed installation and `SOLVER_INTEGRATION_COMPLETE.md` for testing guide.
+
 ### Application Flow (`app.py`)
 
-The Streamlit app is organized into 6 tabs:
+The Streamlit app is organized into 11 tabs:
 
-1. **Employees**: CRUD interface for managing employee records with multiselect for roles (inferred from shifts and existing employees)
+1. **Employees**: CRUD interface for managing employee records with multiselect for roles
 2. **Shifts & Roles**: Define shift templates with per-weekday headcount requirements
-3. **Rules & Preamble**: Configure the system prompt text, narrative rules, and output format
-4. **Schedule File (Optional)**: Upload CSV/Excel files containing past schedules and future availability
-5. **Compile & Export**: Generate the final system prompt from all configured data
-6. **Test Run (LLM)**: Send compiled prompts to OpenAI-compatible endpoints for testing
+3. **Rules & Preamble**: Configure system prompt text, narrative rules, and output format
+4. **Import Schedule**: Upload Teams Excel files (single multi-sheet or separate files)
+5. **Planning Period**: Set date range and configure optional constraint solver
+6. **Prompt Preview**: View compiled system prompt with solver tool definition (if enabled)
+7. **LLM Settings**: Configure provider (OpenAI, OpenRouter, Azure, Custom) and parameters
+8. **Chat**: Interactive conversation interface for schedule refinement
+9. **Generate**: One-click schedule generation with LLM (uses solver if enabled)
+10. **Preview**: Calendar view and statistics for imported/generated schedules
+11. **Export**: Export to Teams Excel format (single or dual-file mode)
 
 **Session State Management:**
 - `st.session_state.project`: Holds the current `Project` instance throughout the session

@@ -746,6 +746,105 @@ with tabs[4]:
             days = (end_date - start_date).days + 1
             st.success(f"Planning period set: {days} days from {start_date} to {end_date}")
 
+    # Constraint Solver Configuration (Optional Feature)
+    st.markdown("---")
+    st.markdown("### 🔧 Constraint Solver (Optional)")
+    st.caption("Mathematical optimization for provably optimal schedules")
+
+    from solver_utils import get_solver_info
+
+    solver_info = get_solver_info()
+
+    if solver_info["available"]:
+        st.success(solver_info["message"])
+
+        # Enable checkbox
+        enable_solver = st.checkbox(
+            "Enable Constraint Solver Mode",
+            value=st.session_state.get("enable_solver", False),
+            help="Use MiniZinc constraint programming for mathematically optimal schedules"
+        )
+        st.session_state.enable_solver = enable_solver
+
+        if enable_solver:
+            col1, col2 = st.columns(2)
+            with col1:
+                solver_backend = st.selectbox(
+                    "Solver Backend",
+                    options=solver_info["solvers"],
+                    index=0 if "chuffed" in solver_info["solvers"] else 0,
+                    help="Chuffed is recommended for scheduling problems"
+                )
+                st.session_state.solver_backend = solver_backend
+
+            with col2:
+                time_limit = st.slider(
+                    "Timeout (seconds)",
+                    min_value=5,
+                    max_value=60,
+                    value=st.session_state.get("solver_timeout", 15),
+                    help="Maximum time for solver to find solution"
+                )
+                st.session_state.solver_timeout = time_limit
+
+            # Soft Constraint Weights
+            with st.expander("⚖️ Soft Constraint Weights"):
+                st.caption("Higher weight = more important to satisfy (affects penalty calculation)")
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    w_fairness = st.slider("Fairness (balanced workload)", 0.0, 10.0, 3.0, 0.5)
+                    w_late = st.slider("Late shift violations", 0.0, 10.0, 2.0, 0.5)
+                with col2:
+                    w_pikett = st.slider("Pikett gap violations", 0.0, 10.0, 2.0, 0.5)
+                    w_coverage = st.slider("Coverage deficit", 0.0, 10.0, 5.0, 0.5)
+
+                st.session_state.solver_weights = {
+                    "fairness": w_fairness,
+                    "late_violation": w_late,
+                    "pikett_violation": w_pikett,
+                    "coverage": w_coverage
+                }
+
+            # Constraint Rules
+            with st.expander("🔒 Constraint Rules"):
+                st.caption("Configure scheduling constraints and requirements")
+
+                no_consecutive_late = st.checkbox(
+                    "Prevent consecutive late shifts",
+                    value=st.session_state.get("no_consecutive_late", True),
+                    help="Employees should not work late shifts on consecutive days"
+                )
+                st.session_state.no_consecutive_late = no_consecutive_late
+
+                pikett_gap = st.number_input(
+                    "Minimum days between Pikett assignments",
+                    min_value=0,
+                    max_value=14,
+                    value=st.session_state.get("pikett_gap_days", 7),
+                    help="Minimum gap between on-call duty assignments (0 = no constraint)"
+                )
+                st.session_state.pikett_gap_days = pikett_gap
+
+                fr_dispatcher_min = st.number_input(
+                    "Min French-speaking dispatchers per week",
+                    min_value=0,
+                    max_value=10,
+                    value=st.session_state.get("fr_dispatcher_per_week", 1),
+                    help="Minimum number of French-speaking employees on dispatcher shifts per week"
+                )
+                st.session_state.fr_dispatcher_per_week = fr_dispatcher_min
+
+            st.info("💡 **Tip**: The solver will be available as a tool for the LLM to use when generating schedules")
+
+    else:
+        st.warning(solver_info["message"])
+        with st.expander("📥 How to Install MiniZinc (Optional)"):
+            from solver_utils import get_installation_instructions
+            st.markdown(get_installation_instructions())
+
+        st.info("ℹ️ The app works perfectly without the solver! It's an optional enhancement for complex optimization scenarios.")
+
 # ---------------------------------------------------------
 # TAB 6: Prompt Preview
 # ---------------------------------------------------------
@@ -1299,11 +1398,17 @@ with tabs[8]:
                     prompt += "\n\n" + mcp_tools_section
 
                 try:
-                    # Call LLM
-                    result = call_llm_sync(prompt, project.llm_config, "Produce the schedule now.")
+                    # Call LLM with tools enabled if solver mode is active
+                    enable_tools = st.session_state.get("enable_solver", False)
+                    result = call_llm_sync(prompt, project.llm_config, "Produce the schedule now.", enable_tools=enable_tools)
 
                     st.session_state.generated_schedule = result
                     st.success("✅ Schedule generated!")
+
+                    # Display tool usage if any
+                    if result.get("tool_calls"):
+                        st.info(f"🔧 Used solver tool: {len(result['tool_calls'])} call(s)")
+
 
                     # Display results
                     if result.get("thinking"):

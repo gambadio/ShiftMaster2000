@@ -6,6 +6,7 @@ Supports:
 - OpenAI reasoning_effort parameter
 - Streaming with callbacks
 - MCP integration
+- Tool calling (solver integration)
 """
 
 from __future__ import annotations
@@ -13,8 +14,11 @@ import asyncio
 from typing import Dict, Any, Optional, Callable, List
 import requests
 import json
+import logging
 
 from models import LLMConfig
+
+logger = logging.getLogger(__name__)
 
 
 async def call_llm_with_reasoning(
@@ -23,6 +27,7 @@ async def call_llm_with_reasoning(
     user_message: str = "Produce the schedule now.",
     on_chunk: Optional[Callable[[str], None]] = None,
     on_thinking: Optional[Callable[[str], None]] = None,
+    enable_tools: bool = False,
 ) -> Dict[str, Any]:
     """
     Call LLM with reasoning support and streaming.
@@ -33,14 +38,15 @@ async def call_llm_with_reasoning(
         user_message: User message to send
         on_chunk: Callback for streaming content chunks
         on_thinking: Callback for thinking/reasoning chunks
+        enable_tools: Whether to enable tool calling (solver integration)
 
     Returns:
-        Dict with 'content', 'thinking', 'usage', and 'model' keys
+        Dict with 'content', 'thinking', 'usage', 'model', and optionally 'tool_calls' keys
     """
     if config.model_family.lower() == "claude":
-        return await _call_claude(prompt, config, user_message, on_chunk, on_thinking)
+        return await _call_claude(prompt, config, user_message, on_chunk, on_thinking, enable_tools)
     elif config.model_family.lower() == "openai":
-        return await _call_openai(prompt, config, user_message, on_chunk, on_thinking)
+        return await _call_openai(prompt, config, user_message, on_chunk, on_thinking, enable_tools)
     else:
         # Custom/fallback
         return await _call_generic(prompt, config, user_message, on_chunk)
@@ -52,8 +58,9 @@ async def _call_claude(
     user_message: str,
     on_chunk: Optional[Callable[[str], None]],
     on_thinking: Optional[Callable[[str], None]],
+    enable_tools: bool = False,
 ) -> Dict[str, Any]:
-    """Call Claude with extended thinking support"""
+    """Call Claude with extended thinking and tool support"""
     try:
         import anthropic
     except ImportError:
@@ -75,6 +82,12 @@ async def _call_claude(
         "messages": messages,
     }
 
+    # Add tools if enabled
+    if enable_tools:
+        tools = _get_available_tools()
+        if tools:
+            params["tools"] = tools
+
     # Add extended thinking if configured
     extra_headers = {}
     if config.budget_tokens and config.budget_tokens >= 1024:
@@ -95,6 +108,11 @@ async def _call_claude(
         return await _stream_claude(client, params, on_chunk, on_thinking)
     else:
         response = client.messages.create(**params)
+
+        # Handle tool calls
+        if response.stop_reason == "tool_use":
+            return await _handle_tool_calls_claude(client, params, response, on_chunk, on_thinking)
+
         return _parse_claude_response(response)
 
 
@@ -174,6 +192,7 @@ async def _call_openai(
     user_message: str,
     on_chunk: Optional[Callable[[str], None]],
     on_thinking: Optional[Callable[[str], None]],
+    enable_tools: bool = False,
 ) -> Dict[str, Any]:
     """Call OpenAI with reasoning_effort support"""
     try:
@@ -323,6 +342,193 @@ def call_llm_sync(
     prompt: str,
     config: LLMConfig,
     user_message: str = "Produce the schedule now.",
+    enable_tools: bool = False,
 ) -> Dict[str, Any]:
     """Synchronous wrapper for call_llm_with_reasoning"""
-    return asyncio.run(call_llm_with_reasoning(prompt, config, user_message))
+    return asyncio.run(call_llm_with_reasoning(prompt, config, user_message, enable_tools=enable_tools))
+
+
+# === Tool Calling Support ===
+
+def _get_available_tools() -> List[Dict[str, Any]]:
+    """
+    Returns list of tool definitions for LLM.
+
+    Currently supports the MiniZinc constraint solver tool when enabled.
+    """
+    tools = []
+
+    # Check if solver mode is enabled
+    try:
+        import streamlit as st
+        if st.session_state.get("enable_solver", False):
+            from solver_utils import check_minizinc_available
+            from solver_models import SolverRequest
+
+            is_available, _ = check_minizinc_available()
+            if is_available:
+                # Add solver tool
+                tools.append({
+                    "name": "solve_with_minizinc",
+                    "description": "Generate an optimized shift schedule using constraint programming. "
+                                   "This tool uses mathematical optimization to find provably optimal or near-optimal "
+                                   "shift assignments that satisfy hard constraints and minimize soft constraint violations. "
+                                   "Use this when you need to generate a schedule with complex fairness requirements, "
+                                   "strict rotation constraints, or need mathematical guarantees about schedule quality.",
+                    "input_schema": SolverRequest.model_json_schema()
+                })
+    except Exception as e:
+        logger.warning(f"Failed to load solver tool: {e}")
+
+    return tools
+
+
+def _execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Execute a tool call and return results.
+
+    Args:
+        tool_name: Name of the tool to execute
+        tool_input: Input parameters for the tool
+
+    Returns:
+        Tool execution result as dict
+    """
+    if tool_name == "solve_with_minizinc":
+        try:
+            from solver_service import solve_with_minizinc
+            from solver_models import SolverRequest
+            import streamlit as st
+
+            # Inject weights from session state if available
+            if "solver_weights" in st.session_state:
+                if "rules" not in tool_input:
+                    tool_input["rules"] = {}
+                if "weights" not in tool_input["rules"]:
+                    tool_input["rules"]["weights"] = st.session_state.solver_weights
+
+            # Inject constraint rules from session state
+            if "no_consecutive_late" in st.session_state:
+                if "rules" not in tool_input:
+                    tool_input["rules"] = {}
+                tool_input["rules"]["no_consecutive_late"] = st.session_state.no_consecutive_late
+            if "pikett_gap_days" in st.session_state:
+                if "rules" not in tool_input:
+                    tool_input["rules"] = {}
+                tool_input["rules"]["pikett_gap_days"] = st.session_state.pikett_gap_days
+            if "fr_dispatcher_per_week" in st.session_state:
+                if "rules" not in tool_input:
+                    tool_input["rules"] = {}
+                tool_input["rules"]["fr_dispatcher_per_week"] = st.session_state.fr_dispatcher_per_week
+
+            # Inject solver backend and timeout from session state
+            if "options" not in tool_input:
+                tool_input["options"] = {}
+            if "solver_backend" in st.session_state:
+                tool_input["options"]["solver"] = st.session_state.solver_backend
+            if "solver_timeout" in st.session_state:
+                tool_input["options"]["time_limit_ms"] = st.session_state.solver_timeout * 1000
+
+            # Validate and execute
+            request = SolverRequest.model_validate(tool_input)
+            response = solve_with_minizinc(request)
+            return response.model_dump()
+
+        except Exception as e:
+            logger.exception("Solver execution failed")
+            return {
+                "status": "ERROR",
+                "message": f"Tool execution error: {str(e)}",
+                "stats": {"solver": "none", "time_ms": 0}
+            }
+
+    raise ValueError(f"Unknown tool: {tool_name}")
+
+
+async def _handle_tool_calls_claude(
+    client,
+    params: Dict[str, Any],
+    response,
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+) -> Dict[str, Any]:
+    """
+    Handle tool calls from Claude and continue conversation.
+
+    This implements the tool use loop:
+    1. LLM requests tool use
+    2. Execute tool
+    3. Send results back to LLM
+    4. LLM continues with final answer
+    """
+    messages = params["messages"].copy()
+
+    # Parse initial response
+    initial_result = _parse_claude_response(response)
+
+    # Extract tool uses from response
+    tool_uses = []
+    for block in response.content:
+        if block.type == "tool_use":
+            tool_uses.append({
+                "id": block.id,
+                "name": block.name,
+                "input": block.input
+            })
+
+    if not tool_uses:
+        return initial_result
+
+    # Add assistant message with tool uses
+    messages.append({
+        "role": "assistant",
+        "content": response.content
+    })
+
+    # Execute each tool and collect results
+    tool_results = []
+    for tool_use in tool_uses:
+        logger.info(f"Executing tool: {tool_use['name']}")
+
+        try:
+            result = _execute_tool(tool_use["name"], tool_use["input"])
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_use["id"],
+                "content": json.dumps(result, indent=2)
+            })
+        except Exception as e:
+            logger.exception(f"Tool execution failed: {tool_use['name']}")
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_use["id"],
+                "content": f"Error: {str(e)}",
+                "is_error": True
+            })
+
+    # Add tool results as user message
+    messages.append({
+        "role": "user",
+        "content": tool_results
+    })
+
+    # Update params with extended conversation
+    params["messages"] = messages
+
+    # Call LLM again with tool results
+    final_response = client.messages.create(**params)
+
+    # Parse final response
+    final_result = _parse_claude_response(final_response)
+
+    # Merge thinking from both calls
+    if initial_result.get("thinking") and final_result.get("thinking"):
+        final_result["thinking"] = initial_result["thinking"] + "\n\n" + final_result["thinking"]
+    elif initial_result.get("thinking"):
+        final_result["thinking"] = initial_result["thinking"]
+
+    # Add tool call metadata
+    final_result["tool_calls"] = tool_uses
+    final_result["tool_results"] = tool_results
+
+    return final_result
