@@ -16,8 +16,8 @@ from models import (
     LLMProviderConfig, ChatSession, ChatMessage
 )
 from utils import (
-    save_project, load_project_dict, compile_prompt,
-    parse_schedule_to_payload, parse_dual_schedule_files
+    save_project, save_complete_state, load_project_dict, load_complete_state,
+    compile_prompt, parse_schedule_to_payload, parse_dual_schedule_files
 )
 from llm_client import create_llm_client, validate_provider_config
 from llm_manager import call_llm_with_reasoning, call_llm_sync
@@ -118,21 +118,57 @@ with st.sidebar:
     if up is not None:
         try:
             data = json.load(up)
-            project = load_project_dict(data)
-            st.session_state.project = project
-            st.success(f"Loaded: {project.name}")
+            # Load complete state (backward compatible with old format)
+            state = load_complete_state(data)
+
+            # Restore all session state
+            st.session_state.project = state["project"]
+            if state["schedule_payload"]:
+                st.session_state.schedule_payload = state["schedule_payload"]
+            if state["generated_schedule"]:
+                st.session_state.generated_schedule = state["generated_schedule"]
+            if state["generated_entries"]:
+                st.session_state.generated_entries = state["generated_entries"]
+            if state["llm_conversation"]:
+                st.session_state.llm_conversation = state["llm_conversation"]
+
+            st.success(f"✅ Loaded: {state['project'].name}")
+            st.info(f"📊 Restored: {len(state['generated_entries'])} entries, {len(state['llm_conversation'])} conversations")
+            st.rerun()
         except Exception as e:
             st.error(f"Failed to load: {e}")
+            st.exception(e)
 
     dl_name = st.text_input("Save as", value=f"{project.name.replace(' ','_').lower()}.json")
+
+    # Option to save complete state or just project
+    save_mode = st.radio(
+        "Save mode",
+        ["Complete state (all data)", "Project only (config)"],
+        help="Complete state saves everything (schedule, results, conversations). Project only saves configuration."
+    )
+
     if st.button("💾 Save project"):
         try:
-            save_project(dl_name, project)
-            st.success(f"Saved {dl_name}")
+            if save_mode == "Complete state (all data)":
+                save_complete_state(
+                    dl_name,
+                    project,
+                    schedule_payload=st.session_state.get("schedule_payload"),
+                    generated_schedule=st.session_state.get("generated_schedule"),
+                    generated_entries=st.session_state.get("generated_entries", []),
+                    llm_conversation=st.session_state.get("llm_conversation", [])
+                )
+                st.success(f"✅ Complete state saved to {dl_name}")
+            else:
+                save_project(dl_name, project)
+                st.success(f"✅ Project config saved to {dl_name}")
+
             with open(dl_name, "rb") as f:
-                st.download_button("Download", data=f.read(), file_name=dl_name)
+                st.download_button("⬇️ Download", data=f.read(), file_name=dl_name, mime="application/json")
         except Exception as e:
             st.error(f"Save failed: {e}")
+            st.exception(e)
 
     st.write("---")
     st.write("### Quick Stats")
@@ -346,15 +382,10 @@ with tabs[1]:
             if current_shift and current_shift.color_code:
                 current_color = f"{current_shift.color_code}. {TEAMS_COLOR_NAMES.get(current_shift.color_code, '')}"
 
-            selected_color = st.selectbox("Teams Color", options=color_options,
-                index=color_options.index(current_color) if current_color in color_options else 0)
+            selected_color = st.selectbox("Teams Color*", options=color_options,
+                index=color_options.index(current_color) if current_color in color_options else 0,
+                help="Color coding for Teams Shifts visual display")
             color_code = selected_color.split(".")[0]
-
-            unpaid_break = st.number_input("Unpaid break (minutes)", 0, 120,
-                value=current_shift.unpaid_break_minutes if current_shift and current_shift.unpaid_break_minutes else 0)
-
-            teams_label = st.text_input("Teams label (optional)",
-                value=current_shift.teams_label if current_shift else "")
 
         weekdays = st.multiselect("Weekdays", ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
             default=current_shift.weekdays if current_shift else ["Mon","Tue","Wed","Thu","Fri"])
@@ -392,8 +423,6 @@ with tabs[1]:
                     required_count=per,
                     notes=notes or None,
                     color_code=color_code,
-                    unpaid_break_minutes=unpaid_break if unpaid_break > 0 else None,
-                    teams_label=teams_label or None,
                     concurrent_shifts=concurrent,
                 )
 

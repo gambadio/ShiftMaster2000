@@ -8,14 +8,112 @@ from models import Project
 from prompt_templates import build_system_prompt
 
 # ----------------------------
-# Project I/O
+# JSON serialization helpers
+# ----------------------------
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles date and datetime objects"""
+    def default(self, obj):
+        if isinstance(obj, (date, datetime)):
+            return obj.isoformat()
+        return super().default(obj)
+
+def _serialize_for_json(obj: Any) -> Any:
+    """Recursively convert dates to ISO strings for JSON serialization"""
+    if isinstance(obj, (date, datetime)):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {k: _serialize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_serialize_for_json(item) for item in obj]
+    elif hasattr(obj, 'model_dump'):
+        # Pydantic model
+        return _serialize_for_json(obj.model_dump())
+    return obj
+
+# ----------------------------
+# Project I/O (Complete State)
 # ----------------------------
 def save_project(path: str, project: Project) -> None:
+    """Save project to JSON file with date serialization"""
+    project_dict = project.model_dump()
+    serialized = _serialize_for_json(project_dict)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(project.model_dump(), f, ensure_ascii=False, indent=2)
+        json.dump(serialized, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+
+def save_complete_state(
+    path: str,
+    project: Project,
+    schedule_payload: Optional[Dict[str, Any]] = None,
+    generated_schedule: Optional[Dict[str, Any]] = None,
+    generated_entries: Optional[List[Any]] = None,
+    llm_conversation: Optional[List[Dict[str, Any]]] = None
+) -> None:
+    """
+    Save complete application state including:
+    - Project configuration (employees, shifts, rules, LLM config)
+    - Imported schedule data (schedule_payload)
+    - Generated schedule output
+    - Generated schedule entries
+    - LLM conversation history
+    """
+    state = {
+        "version": "1.0",
+        "saved_at": datetime.now().isoformat(),
+        "project": project.model_dump(),
+        "schedule_payload": schedule_payload,
+        "generated_schedule": generated_schedule,
+        "generated_entries": [e.model_dump() if hasattr(e, 'model_dump') else e for e in (generated_entries or [])],
+        "llm_conversation": llm_conversation or []
+    }
+
+    # Serialize dates
+    serialized = _serialize_for_json(state)
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(serialized, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
 
 def load_project_dict(data: Dict[str, Any]) -> Project:
+    """Load project from dict, handling both simple and complete state formats"""
+    # Check if this is a complete state file (new format)
+    if "project" in data and "version" in data:
+        return Project.model_validate(data["project"])
+    # Otherwise treat as simple project file (old format)
     return Project.model_validate(data)
+
+def load_complete_state(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Load complete application state from dict.
+    Returns dict with keys: project, schedule_payload, generated_schedule, generated_entries, llm_conversation
+    """
+    # Check if this is a complete state file
+    if "version" in data and "project" in data:
+        from models import ScheduleEntry
+
+        # Convert generated_entries back to ScheduleEntry objects
+        generated_entries = []
+        if data.get("generated_entries"):
+            for entry_data in data["generated_entries"]:
+                try:
+                    generated_entries.append(ScheduleEntry.model_validate(entry_data))
+                except:
+                    pass  # Skip invalid entries
+
+        return {
+            "project": Project.model_validate(data["project"]),
+            "schedule_payload": data.get("schedule_payload"),
+            "generated_schedule": data.get("generated_schedule"),
+            "generated_entries": generated_entries,
+            "llm_conversation": data.get("llm_conversation", [])
+        }
+    else:
+        # Old format - just project
+        return {
+            "project": Project.model_validate(data),
+            "schedule_payload": None,
+            "generated_schedule": None,
+            "generated_entries": [],
+            "llm_conversation": []
+        }
 
 # ----------------------------
 # Prompt compiler
