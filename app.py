@@ -21,7 +21,7 @@ from utils import (
 )
 from llm_client import create_llm_client, validate_provider_config
 from llm_manager import call_llm_with_reasoning, call_llm_sync
-from export_teams import export_to_teams_excel, schedule_entries_from_llm_output
+from export_teams import export_to_teams_excel, export_to_teams_excel_multisheet, schedule_entries_from_llm_output
 from preview import render_calendar_preview, render_statistics, render_conflicts
 from mcp_config import format_mcp_tools_for_prompt, get_mcp_server_examples
 from prompt_templates import build_system_prompt
@@ -456,48 +456,107 @@ with tabs[2]:
 # ---------------------------------------------------------
 with tabs[3]:
     st.subheader("Import Microsoft Teams Schedule")
-    st.caption("Upload shifts and time-off files exported from Teams")
+    st.caption("Upload Teams export: either a single multi-sheet Excel file or separate shifts/time-off files")
 
-    col1, col2 = st.columns(2)
+    # Import mode selection
+    import_mode = st.radio(
+        "Import mode",
+        options=["Single file (multi-sheet)", "Separate files (shifts + time-off)"],
+        help="Teams exports contain multiple sheets. You can upload the complete file or split files."
+    )
 
-    with col1:
-        shifts_file = st.file_uploader("Shifts file (Excel)", type=["xlsx","xls"], key="shifts_upload")
+    if import_mode == "Single file (multi-sheet)":
+        st.markdown("### Single File Import")
+        st.caption("Upload the complete Teams export file (contains Schichten, Arbeitsfreie Zeit, Mitglieder)")
 
-    with col2:
-        timeoff_file = st.file_uploader("Time-off file (Excel, optional)", type=["xlsx","xls"], key="timeoff_upload")
+        teams_file = st.file_uploader("Teams Excel file", type=["xlsx","xls"], key="teams_multisheet_upload")
 
-    if st.button("📥 Parse and Import"):
-        if shifts_file is None:
-            st.error("Shifts file is required")
-        else:
-            try:
-                today = datetime.now(ZoneInfo("Europe/Zurich")).date()
-                shifts_bytes = shifts_file.read()
-                timeoff_bytes = timeoff_file.read() if timeoff_file else None
+        if st.button("📥 Parse Multi-Sheet File", key="parse_multisheet"):
+            if teams_file is None:
+                st.error("Teams file is required")
+            else:
+                try:
+                    from utils import parse_teams_excel_multisheet
 
-                payload = parse_dual_schedule_files(
-                    shifts_bytes, shifts_file.name,
-                    timeoff_bytes, timeoff_file.name if timeoff_file else None,
-                    today
-                )
+                    today = datetime.now(ZoneInfo("Europe/Zurich")).date()
+                    teams_bytes = teams_file.read()
 
-                st.session_state.schedule_payload = payload
-                st.success("✅ Schedule imported successfully!")
+                    payload = parse_teams_excel_multisheet(
+                        teams_bytes,
+                        teams_file.name,
+                        today
+                    )
 
-                st.json(payload["meta"])
+                    st.session_state.schedule_payload = payload
+                    st.success("✅ Multi-sheet schedule imported successfully!")
 
-                with st.expander("Fairness Hints (last 14 days)"):
-                    st.json(payload.get("fairness_hints", {}))
+                    st.json(payload["meta"])
 
-                with st.expander("Preview: Past Entries (first 20)"):
-                    st.json(payload["past_entries"][:20])
+                    # Show member data if available
+                    if payload.get("members"):
+                        with st.expander(f"📧 Members ({len(payload['members'])} found)"):
+                            members_df = pd.DataFrame(payload["members"])
+                            st.dataframe(members_df, use_container_width=True)
 
-                with st.expander("Preview: Future Entries (first 20)"):
-                    st.json(payload["future_entries"][:20])
+                    with st.expander("Fairness Hints (last 14 days)"):
+                        st.json(payload.get("fairness_hints", {}))
 
-            except Exception as e:
-                st.error(f"Import failed: {e}")
-                st.session_state.schedule_payload = None
+                    with st.expander("Preview: Past Entries (first 20)"):
+                        st.json(payload["past_entries"][:20])
+
+                    with st.expander("Preview: Future Entries (first 20)"):
+                        st.json(payload["future_entries"][:20])
+
+                except Exception as e:
+                    st.error(f"Import failed: {e}")
+                    st.exception(e)
+                    st.session_state.schedule_payload = None
+
+    else:  # Separate files mode
+        st.markdown("### Separate Files Import")
+        st.caption("Upload shifts and time-off as separate Excel files")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            shifts_file = st.file_uploader("Shifts file (Excel)", type=["xlsx","xls"], key="shifts_upload")
+
+        with col2:
+            timeoff_file = st.file_uploader("Time-off file (Excel, optional)", type=["xlsx","xls"], key="timeoff_upload")
+
+        if st.button("📥 Parse Separate Files", key="parse_dual"):
+            if shifts_file is None:
+                st.error("Shifts file is required")
+            else:
+                try:
+                    today = datetime.now(ZoneInfo("Europe/Zurich")).date()
+                    shifts_bytes = shifts_file.read()
+                    timeoff_bytes = timeoff_file.read() if timeoff_file else None
+
+                    payload = parse_dual_schedule_files(
+                        shifts_bytes, shifts_file.name,
+                        timeoff_bytes, timeoff_file.name if timeoff_file else None,
+                        today
+                    )
+
+                    st.session_state.schedule_payload = payload
+                    st.success("✅ Schedule imported successfully!")
+
+                    st.json(payload["meta"])
+
+                    with st.expander("Fairness Hints (last 14 days)"):
+                        st.json(payload.get("fairness_hints", {}))
+
+                    with st.expander("Preview: Past Entries (first 20)"):
+                        st.json(payload["past_entries"][:20])
+
+                    with st.expander("Preview: Future Entries (first 20)"):
+                        st.json(payload["future_entries"][:20])
+
+                except Exception as e:
+                    st.error(f"Import failed: {e}")
+                    st.exception(e)
+                    st.session_state.schedule_payload = None
 
     if st.session_state.schedule_payload:
         st.info("✅ Schedule data loaded and ready for generation")
@@ -1161,34 +1220,82 @@ with tabs[10]:
 
         st.write(f"**Ready to export {len(entries)} schedule entries**")
 
-        shifts_filename = st.text_input("Shifts filename", value="teams_shifts.xlsx")
-        timeoff_filename = st.text_input("Time-off filename", value="teams_timeoff.xlsx")
+        # Export mode selection
+        export_mode = st.radio(
+            "Export format",
+            options=["Single file (multi-sheet)", "Separate files (shifts + time-off)"],
+            help="Choose whether to export as one multi-sheet file or separate shift/time-off files"
+        )
 
-        if st.button("📥 Export to Excel"):
-            try:
-                export_to_teams_excel(entries, shifts_filename, timeoff_filename)
-                st.success(f"✅ Exported to {shifts_filename} and {timeoff_filename}")
+        if export_mode == "Single file (multi-sheet)":
+            st.markdown("### Single File Export")
+            st.caption("Creates one Excel file with sheets: Schichten, Arbeitsfreie Zeit, Mitglieder")
 
-                # Offer downloads
-                with open(shifts_filename, "rb") as f:
-                    st.download_button(
-                        "⬇️ Download Shifts File",
-                        data=f.read(),
-                        file_name=shifts_filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+            multisheet_filename = st.text_input("Excel filename", value="teams_schedule.xlsx")
 
-                with open(timeoff_filename, "rb") as f:
-                    st.download_button(
-                        "⬇️ Download Time-off File",
-                        data=f.read(),
-                        file_name=timeoff_filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+            if st.button("📥 Export Multi-Sheet Excel", key="export_multisheet"):
+                try:
+                    # Get members from imported schedule if available
+                    members = None
+                    if st.session_state.schedule_payload and st.session_state.schedule_payload.get("members"):
+                        members = st.session_state.schedule_payload["members"]
 
-            except Exception as e:
-                st.error(f"Export failed: {e}")
-                st.exception(e)
+                    export_to_teams_excel_multisheet(entries, multisheet_filename, members)
+                    st.success(f"✅ Exported to {multisheet_filename}")
+
+                    # Offer download
+                    with open(multisheet_filename, "rb") as f:
+                        st.download_button(
+                            "⬇️ Download Teams Schedule File",
+                            data=f.read(),
+                            file_name=multisheet_filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+
+                except Exception as e:
+                    st.error(f"Export failed: {e}")
+                    st.exception(e)
+
+        else:  # Separate files mode
+            st.markdown("### Separate Files Export")
+            st.caption("Creates two separate Excel files for shifts and time-off")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                shifts_filename = st.text_input("Shifts filename", value="teams_shifts.xlsx")
+            with col2:
+                timeoff_filename = st.text_input("Time-off filename", value="teams_timeoff.xlsx")
+
+            if st.button("📥 Export to Separate Excel Files", key="export_dual"):
+                try:
+                    export_to_teams_excel(entries, shifts_filename, timeoff_filename)
+                    st.success(f"✅ Exported to {shifts_filename} and {timeoff_filename}")
+
+                    # Offer downloads
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        with open(shifts_filename, "rb") as f:
+                            st.download_button(
+                                "⬇️ Download Shifts File",
+                                data=f.read(),
+                                file_name=shifts_filename,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                    with col2:
+                        with open(timeoff_filename, "rb") as f:
+                            st.download_button(
+                                "⬇️ Download Time-off File",
+                                data=f.read(),
+                                file_name=timeoff_filename,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+
+                except Exception as e:
+                    st.error(f"Export failed: {e}")
+                    st.exception(e)
 
         st.markdown("---")
         st.markdown("### Manual Export")

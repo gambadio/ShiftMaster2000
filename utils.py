@@ -72,7 +72,16 @@ BREAK_COL_CANDS     = ["break", "pause", "unpaid_break", "unbezahlte_pause_minut
 SHARED_COL_CANDS    = ["shared", "geteilt"]
 
 def _normalize_cols(df: pd.DataFrame) -> pd.DataFrame:
-    m = {c: re.sub(r"[^a-z0-9]+","_", c.strip().lower()) for c in df.columns}
+    def normalize_col(c: str) -> str:
+        # Convert to lowercase and strip
+        s = c.strip().lower()
+        # Replace German umlauts before removing special chars
+        s = s.replace('ä', 'a').replace('ö', 'o').replace('ü', 'u').replace('ß', 'ss')
+        # Replace non-alphanumeric with underscore
+        s = re.sub(r"[^a-z0-9]+", "_", s)
+        # Remove leading/trailing underscores
+        return s.strip("_")
+    m = {c: normalize_col(c) for c in df.columns}
     return df.rename(columns=m)
 
 def _pick(df: pd.DataFrame, cands: List[str]) -> Optional[str]:
@@ -376,3 +385,132 @@ def _parse_teams_file(df: pd.DataFrame, entry_type: str = "shift") -> List[Dict[
         entries.append(entry)
 
     return entries
+
+# ----------------------------
+# Single-file Teams import (multi-sheet Excel)
+# ----------------------------
+def parse_teams_excel_multisheet(
+    file_bytes: bytes,
+    filename: str,
+    today: date
+) -> Dict[str, Any]:
+    """
+    Parse a single Microsoft Teams Shifts Excel export with multiple sheets.
+
+    Expected sheets (German names, 3 out of 5 are relevant):
+    - "Schichten" (Shifts) - actual shift assignments
+    - "Arbeitsfreie Zeit" (Time-Off) - vacation, sick leave, etc.
+    - "Mitglieder" (Members) - employee list with emails
+
+    The other two sheets are ignored.
+
+    Args:
+        file_bytes: Multi-sheet Teams Excel file
+        filename: Name of the Excel file
+        today: Reference date for splitting past/future
+
+    Returns:
+        Unified payload with past/future entries, member data, and metadata
+    """
+    # Read all sheets from Excel file
+    bio = io.BytesIO(file_bytes)
+    excel_file = pd.ExcelFile(bio)
+
+    # Detect relevant sheets (case-insensitive, flexible matching)
+    shifts_sheet = None
+    timeoff_sheet = None
+    members_sheet = None
+
+    for sheet_name in excel_file.sheet_names:
+        normalized = sheet_name.lower().strip()
+        # Prioritize exact matches, then substring matches
+        if normalized == "schichten" or normalized == "shifts":
+            shifts_sheet = sheet_name
+        elif "arbeitsfreie" in normalized or ("time" in normalized and "off" in normalized):
+            timeoff_sheet = sheet_name
+        elif normalized == "mitglieder" or normalized == "members":
+            members_sheet = sheet_name
+        # Fallback to substring matching only if exact match not found
+        elif not shifts_sheet and ("schichten" in normalized or "shifts" in normalized):
+            shifts_sheet = sheet_name
+        elif not members_sheet and ("mitglied" in normalized or "member" in normalized):
+            members_sheet = sheet_name
+
+    if not shifts_sheet:
+        raise ValueError(f"Could not find 'Schichten' (Shifts) sheet in Excel file. Available sheets: {excel_file.sheet_names}")
+
+    all_entries: List[Dict[str, Any]] = []
+    members_data: List[Dict[str, str]] = []
+
+    # Parse Schichten (Shifts)
+    df_shifts = pd.read_excel(bio, sheet_name=shifts_sheet)
+    df_shifts = _normalize_cols(df_shifts)
+    shifts_entries = _parse_teams_file(df_shifts, entry_type="shift")
+    all_entries.extend(shifts_entries)
+
+    # Parse Arbeitsfreie Zeit (Time-Off) if available
+    if timeoff_sheet:
+        bio.seek(0)  # Reset stream
+        df_timeoff = pd.read_excel(bio, sheet_name=timeoff_sheet)
+        df_timeoff = _normalize_cols(df_timeoff)
+        timeoff_entries = _parse_teams_file(df_timeoff, entry_type="time_off")
+        all_entries.extend(timeoff_entries)
+
+    # Parse Mitglieder (Members) if available
+    if members_sheet:
+        bio.seek(0)  # Reset stream
+        df_members = pd.read_excel(bio, sheet_name=members_sheet)
+        df_members = _normalize_cols(df_members)
+
+        col_emp = _pick(df_members, EMP_COL_CANDIDATES)
+        col_email = _pick(df_members, EMAIL_COL_CANDIDATES)
+
+        if col_emp and col_email:
+            for _, row in df_members.iterrows():
+                if not pd.isna(row[col_emp]) and not pd.isna(row[col_email]):
+                    members_data.append({
+                        "name": str(row[col_emp]).strip().strip('"'),
+                        "email": str(row[col_email]).strip()
+                    })
+
+    # Split by today
+    past: List[Dict[str, Any]] = []
+    future: List[Dict[str, Any]] = []
+
+    for entry in all_entries:
+        entry_date = pd.to_datetime(entry["start_date"]).date()
+        if entry_date < today:
+            past.append(entry)
+        else:
+            future.append(entry)
+
+    # Sort and cap
+    past_sorted = sorted(past, key=lambda x: x["start_date"], reverse=True)
+    future_sorted = sorted(future, key=lambda x: x["start_date"])
+
+    past_cap = past_sorted[:800]
+    future_cap = future_sorted[:800]
+
+    # Compute fairness hints from last 14 days
+    last_14 = [r for r in past_sorted if (today - pd.to_datetime(r["start_date"]).date()).days <= 14]
+    fairness_hints = _compute_fairness_hints(last_14)
+
+    return {
+        "meta": {
+            "source_filename": filename,
+            "today": today.isoformat(),
+            "sheets_found": {
+                "shifts": shifts_sheet,
+                "timeoff": timeoff_sheet if timeoff_sheet else "Not found",
+                "members": members_sheet if members_sheet else "Not found"
+            },
+            "total_entries": len(all_entries),
+            "rows_past_included": len(past_cap),
+            "rows_future_included": len(future_cap),
+            "members_count": len(members_data),
+        },
+        "past_entries": past_cap,
+        "future_entries": future_cap,
+        "fairness_hints": fairness_hints,
+        "members": members_data,
+    }

@@ -42,6 +42,48 @@ def export_to_teams_excel(
         _export_timeoff_file(timeoffs, output_timeoff)
 
 
+def export_to_teams_excel_multisheet(
+    schedule_entries: List[ScheduleEntry],
+    output_file: str,
+    members: List[Dict[str, str]] = None
+) -> None:
+    """
+    Export schedule entries to a single Teams-compatible multi-sheet Excel file
+
+    Creates three sheets:
+    - Schichten (Shifts)
+    - Arbeitsfreie Zeit (Time-Off)
+    - Mitglieder (Members)
+
+    Args:
+        schedule_entries: List of ScheduleEntry objects
+        output_file: Path to output Excel file
+        members: Optional list of member dicts with 'name' and 'email' keys
+    """
+    shifts = []
+    timeoffs = []
+
+    for entry in schedule_entries:
+        if entry.entry_type == "shift":
+            shifts.append(entry)
+        elif entry.entry_type == "time_off":
+            timeoffs.append(entry)
+
+    # Prepare DataFrames for each sheet
+    shifts_df = _prepare_shifts_dataframe(shifts) if shifts else pd.DataFrame()
+    timeoff_df = _prepare_timeoff_dataframe(timeoffs) if timeoffs else pd.DataFrame()
+    members_df = _prepare_members_dataframe(schedule_entries, members)
+
+    # Write to multi-sheet Excel file
+    with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+        if not shifts_df.empty:
+            shifts_df.to_excel(writer, sheet_name="Schichten", index=False)
+        if not timeoff_df.empty:
+            timeoff_df.to_excel(writer, sheet_name="Arbeitsfreie Zeit", index=False)
+        if not members_df.empty:
+            members_df.to_excel(writer, sheet_name="Mitglieder", index=False)
+
+
 def _export_shifts_file(shifts: List[ScheduleEntry], output_path: str) -> None:
     """Export shifts to Teams-compatible Excel"""
     rows = []
@@ -121,6 +163,103 @@ def _format_color_code(color_code: str | None) -> str:
 
     color_name = TEAMS_COLOR_NAMES[color_code]
     return f"{color_code}. {color_name}"
+
+
+def _prepare_shifts_dataframe(shifts: List[ScheduleEntry]) -> pd.DataFrame:
+    """Prepare shifts DataFrame for Teams export"""
+    rows = []
+
+    for shift in shifts:
+        # Format dates and times for Teams (M/D/YYYY and HH:MM)
+        start_date_obj = datetime.fromisoformat(shift.start_date)
+        end_date_obj = datetime.fromisoformat(shift.end_date)
+
+        start_date_str = start_date_obj.strftime("%-m/%-d/%Y")  # M/D/YYYY
+        end_date_str = end_date_obj.strftime("%-m/%-d/%Y")
+
+        # Get color name with number
+        color_display = _format_color_code(shift.color_code)
+
+        row = {
+            "Mitglied": shift.employee_name,
+            "E-Mail (geschäftlich)": shift.employee_email or "",
+            "Gruppe": shift.group or "Service Desk",
+            "Startdatum": start_date_str,
+            "Startzeit": shift.start_time or "00:00",
+            "Enddatum": end_date_str,
+            "Endzeit": shift.end_time or "00:00",
+            "Themenfarbe": color_display,
+            "Bezeichnung": shift.label or "",
+            "Unbezahlte Pause (Minuten)": shift.unpaid_break or "",
+            "Notizen": shift.notes or "",
+            "Geteilt": shift.shared or "1. Geteilt",
+        }
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def _prepare_timeoff_dataframe(timeoffs: List[ScheduleEntry]) -> pd.DataFrame:
+    """Prepare time-off DataFrame for Teams export"""
+    rows = []
+
+    for entry in timeoffs:
+        # Format dates for Teams (M/D/YYYY)
+        start_date_obj = datetime.fromisoformat(entry.start_date)
+        end_date_obj = datetime.fromisoformat(entry.end_date)
+
+        start_date_str = start_date_obj.strftime("%-m/%-d/%Y")
+        end_date_str = end_date_obj.strftime("%-m/%-d/%Y")
+
+        # Time-off typically uses "00:00" for times or blank
+        start_time = entry.start_time if entry.start_time else "00:00"
+        end_time = entry.end_time if entry.end_time else "00:00"
+
+        # Get color name (usually "13. Grau" for time-off)
+        color_display = _format_color_code(entry.color_code or "13")
+
+        row = {
+            "Mitglied": entry.employee_name,
+            "E-Mail (geschäftlich)": entry.employee_email or "",
+            "Startdatum": start_date_str,
+            "Startzeit": start_time,
+            "Enddatum": end_date_str,
+            "Endzeit": end_time,
+            "Grund für arbeitsfreie Zeit": entry.reason or "Ferien",
+            "Themenfarbe": color_display,
+            "Notizen": entry.notes or "",
+            "Geteilt": entry.shared or "1. Geteilt",
+        }
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def _prepare_members_dataframe(
+    schedule_entries: List[ScheduleEntry],
+    members: List[Dict[str, str]] = None
+) -> pd.DataFrame:
+    """
+    Prepare members DataFrame for Teams export
+
+    Extracts unique members from schedule entries or uses provided member list
+    """
+    if members:
+        # Use provided member list
+        return pd.DataFrame(members)
+
+    # Extract unique members from schedule entries
+    unique_members = {}
+
+    for entry in schedule_entries:
+        if entry.employee_name and entry.employee_name not in unique_members:
+            unique_members[entry.employee_name] = {
+                "Mitglied": entry.employee_name,
+                "E-Mail (geschäftlich)": entry.employee_email or ""
+            }
+
+    rows = list(unique_members.values())
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
 def schedule_entries_from_llm_output(llm_output: Dict[str, Any]) -> List[ScheduleEntry]:

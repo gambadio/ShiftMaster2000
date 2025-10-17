@@ -102,20 +102,49 @@ Roles are dynamically inferred from:
 This is cached in `st.session_state.role_options` and used to populate multiselect dropdowns.
 
 ### Microsoft Teams Shifts Integration
-The application now fully supports importing and exporting Microsoft Teams Shifts data:
+The application now fully supports importing and exporting Microsoft Teams Shifts data in two modes:
 
-**Import:**
+**Single-File Import (Multi-Sheet Excel):**
+- Upload one complete Teams export Excel file containing all sheets
+- `parse_teams_excel_multisheet()` in `utils.py` automatically detects and parses:
+  - **Schichten** (Shifts): Actual shift assignments with dates, times, roles, color codes
+  - **Arbeitsfreie Zeit** (Time-Off): Vacation, sick leave, compensation days, etc.
+  - **Mitglieder** (Members): Employee list with names and email addresses
+- Flexible sheet name detection (case-insensitive, supports German/English variants)
+- Extracts member data for validation and export reuse
+- Single function call processes all relevant data from the multi-sheet file
+
+**Dual-File Import (Separate Files):**
 - Supports two separate file uploads: shifts file and time-off file
-- Parses German column names from Teams exports (Mitglied, Startdatum, Endzeit, Themenfarbe, etc.)
 - `parse_dual_schedule_files()` combines both files into a unified payload
+- Useful when shifts and time-off are exported as separate files
+
+**Common Import Features:**
+- Parses German column names from Teams exports (Mitglied, Startdatum, Endzeit, Themenfarbe, etc.)
 - Automatically categorizes entries as "shift" or "time_off" types
 - Includes email addresses, color codes, groups, and all Teams-specific fields
+- Splits data into past/future based on "today" (Europe/Zurich timezone)
+- Computes fairness hints from the last 14 days of data
 
-**Export:**
+**Single-File Export (Multi-Sheet Excel):**
+- `export_to_teams_excel_multisheet()` creates one Excel file with three sheets:
+  - **Schichten** (Shifts)
+  - **Arbeitsfreie Zeit** (Time-Off)
+  - **Mitglieder** (Members)
+- Reuses member data from import if available, or extracts unique members from schedule entries
+- Ready for direct import back into Microsoft Teams Shifts
+- Maintains all Teams-required formatting and field names
+
+**Dual-File Export (Separate Files):**
+- `export_to_teams_excel()` creates two separate Excel files for shifts and time-off
+- Useful for workflows that require separate shift and time-off files
+
+**Common Export Features:**
 - LLM output is formatted to match Teams Shifts import requirements
 - Includes proper German field names and Teams color coding system
 - 13 color codes mapped to specific roles and shift types (see `TEAMS_FORMAT_SPEC`)
 - Date format: M/D/YYYY, Time format: HH:MM (24-hour)
+- All data formatted for seamless Teams Shifts import
 
 **Planning Period:**
 - Date range selector in "Compile & Export" tab specifies the scheduling timeframe
