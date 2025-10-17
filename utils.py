@@ -1,8 +1,7 @@
 from __future__ import annotations
 import io, json, re
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Dict, Optional, List
 from datetime import datetime, date
-from zoneinfo import ZoneInfo
 
 import pandas as pd
 from models import Project
@@ -530,8 +529,6 @@ def find_duplicate_employee(project: Project, name: str, email: str) -> Optional
     Returns:
         Existing Employee object if found, None otherwise
     """
-    from models import Employee
-
     # Normalize for comparison
     name_normalized = name.strip().lower()
     email_normalized = email.strip().lower() if email else ""
@@ -732,8 +729,9 @@ def detect_shift_patterns_from_schedule(
 
         # Create pattern key: start_time + end_time + notes (or label)
         # Use notes primarily, fallback to label
+        # Use || as separator to avoid conflict with time format (HH:MM)
         role_identifier = notes or label or "Shift"
-        pattern_key = f"{start_time}-{end_time}:{role_identifier}:{color_code or '1'}"
+        pattern_key = f"{start_time}-{end_time}||{role_identifier}||{color_code or '1'}"
 
         pattern = pattern_map[pattern_key]
         pattern["count"] += 1
@@ -778,16 +776,24 @@ def detect_shift_patterns_from_schedule(
         if pattern["count"] < 2:
             continue
 
-        # Parse pattern key
-        parts = pattern_key.split(":")
+        # Parse pattern key (format: "HH:MM-HH:MM||role||color")
+        parts = pattern_key.split("||")
         if len(parts) < 3:
             continue
 
-        time_part = parts[0]  # "start-end"
+        time_part = parts[0]  # "HH:MM-HH:MM"
         role_part = parts[1]   # role/notes
-        color_part = parts[2]  # color code
+        # parts[2] is color code (already stored in pattern dict)
 
-        start_time, end_time = time_part.split("-")
+        # Safely parse time_part - skip if malformed
+        if "-" not in time_part:
+            continue
+
+        time_parts = time_part.split("-")
+        if len(time_parts) != 2:
+            continue
+
+        start_time, end_time = time_parts[0].strip(), time_parts[1].strip()
 
         # Create shift ID from role and time
         shift_id = f"{role_part.lower().replace(' ', '-')}-{start_time.replace(':', '')}"
