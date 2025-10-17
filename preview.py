@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date, timedelta
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from models import ScheduleEntry, TEAMS_COLOR_NAMES
 
@@ -234,9 +235,10 @@ def render_calendar_preview(
                     end_t = entry.end_time.split(':')[0:2]
                     time_str = f"{':'.join(start_t)} - {':'.join(end_t)}"
 
-                # Determine label
+                # Determine label and color
                 if entry.entry_type == "time_off":
                     label = entry.reason or "Time Off"
+                    color_class = "color-13"  # Force grey for time-off
                 else:
                     label = entry.label or "Shift"
 
@@ -251,7 +253,11 @@ def render_calendar_preview(
     html_parts.append('</tbody>')
     html_parts.append('</table>')
 
-    st.markdown(''.join(html_parts), unsafe_allow_html=True)
+    # Render using components for better HTML support
+    full_html = ''.join(html_parts)
+    # Dynamic height based on number of employees (roughly 60px per employee + 150px for headers)
+    height = min(800, 150 + (len(employees) * 60))
+    components.html(full_html, height=height, scrolling=True)
 
 
 def render_statistics(schedule_entries: List[ScheduleEntry]):
