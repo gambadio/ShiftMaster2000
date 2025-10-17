@@ -469,6 +469,13 @@ with tabs[3]:
         st.markdown("### Single File Import")
         st.caption("Upload the complete Teams export file (contains Schichten, Arbeitsfreie Zeit, Mitglieder)")
 
+        # Checkbox for shift pattern detection
+        auto_detect_shifts = st.checkbox(
+            "🔍 Auto-detect shift patterns",
+            value=False,
+            help="Automatically analyze the schedule data to detect and create shift templates based on recurring patterns (time + role + color)"
+        )
+
         teams_file = st.file_uploader("Teams Excel file", type=["xlsx","xls"], key="teams_multisheet_upload")
 
         if st.button("📥 Parse & Auto-Populate", key="parse_multisheet"):
@@ -476,7 +483,7 @@ with tabs[3]:
                 st.error("Teams file is required")
             else:
                 try:
-                    from utils import parse_teams_excel_multisheet, auto_populate_employees_from_members, generate_schedule_preview
+                    from utils import parse_teams_excel_multisheet, auto_populate_employees_from_members, generate_schedule_preview, detect_shift_patterns_from_schedule
 
                     today = datetime.now(ZoneInfo("Europe/Zurich")).date()
                     teams_bytes = teams_file.read()
@@ -489,6 +496,14 @@ with tabs[3]:
                     )
 
                     st.session_state.schedule_payload = payload
+
+                    # Auto-detect shift patterns if checkbox is enabled
+                    shift_detection_result = None
+                    if auto_detect_shifts:
+                        shift_detection_result = detect_shift_patterns_from_schedule(
+                            payload,
+                            st.session_state.project
+                        )
 
                     # Auto-populate employees from members data
                     employee_changes = None
@@ -540,6 +555,23 @@ with tabs[3]:
                                 with st.expander("View existing employees"):
                                     existing_df = pd.DataFrame(employee_changes["existing_employees"])
                                     st.dataframe(existing_df[["name", "email"]], use_container_width=True)
+
+                    # Shift pattern detection results
+                    if shift_detection_result:
+                        st.markdown("### 🔍 Shift Pattern Detection")
+                        shift_col1, shift_col2 = st.columns(2)
+
+                        with shift_col1:
+                            st.metric("✅ Patterns Detected", shift_detection_result["detected_count"])
+                        with shift_col2:
+                            st.metric("➕ New Shifts Added", shift_detection_result["added_count"])
+
+                        if shift_detection_result.get("patterns"):
+                            with st.expander("View detected patterns"):
+                                patterns_df = pd.DataFrame(shift_detection_result["patterns"])
+                                st.dataframe(patterns_df, use_container_width=True)
+
+                        st.success(shift_detection_result["message"])
 
                     # Preview sections
                     st.markdown("### 📅 Schedule Preview")

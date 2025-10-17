@@ -670,3 +670,175 @@ def generate_schedule_preview(
         }
 
     return preview
+
+# ----------------------------
+# Shift Pattern Detection
+# ----------------------------
+def detect_shift_patterns_from_schedule(
+    schedule_payload: Dict[str, Any],
+    project: Project
+) -> Dict[str, Any]:
+    """
+    Analyze schedule data to automatically detect shift patterns and create shift templates.
+
+    Args:
+        schedule_payload: Parsed schedule data with past/future entries
+        project: Current project (will be modified in place to add detected shifts)
+
+    Returns:
+        Summary dict with detected shift patterns and added shift templates
+    """
+    from models import ShiftTemplate
+    from collections import defaultdict
+
+    # Combine all entries for pattern analysis
+    all_entries = schedule_payload.get("past_entries", []) + schedule_payload.get("future_entries", [])
+
+    # Filter only shift entries (not time-off)
+    shift_entries = [e for e in all_entries if e.get("entry_type") == "shift"]
+
+    if not shift_entries:
+        return {
+            "detected_count": 0,
+            "added_count": 0,
+            "patterns": [],
+            "message": "No shift entries found to analyze"
+        }
+
+    # Pattern detection based on: start_time + end_time + notes/label + color_code
+    # Create a unique key for each pattern
+    pattern_map = defaultdict(lambda: {
+        "count": 0,
+        "employees": set(),
+        "dates": set(),
+        "weekdays": set(),
+        "color_code": None,
+        "label": None,
+        "notes": None,
+        "unpaid_break": None,
+        "example_entry": None
+    })
+
+    for entry in shift_entries:
+        start_time = entry.get("start_time", "").strip()
+        end_time = entry.get("end_time", "").strip()
+        notes = (entry.get("notes") or "").strip()
+        label = (entry.get("label") or "").strip()
+        color_code = entry.get("color_code")
+
+        # Skip entries without time information
+        if not start_time or not end_time:
+            continue
+
+        # Create pattern key: start_time + end_time + notes (or label)
+        # Use notes primarily, fallback to label
+        role_identifier = notes or label or "Shift"
+        pattern_key = f"{start_time}-{end_time}:{role_identifier}:{color_code or '1'}"
+
+        pattern = pattern_map[pattern_key]
+        pattern["count"] += 1
+
+        # Track employee and date info
+        emp_name = entry.get("employee")
+        if emp_name:
+            pattern["employees"].add(emp_name)
+
+        entry_date = entry.get("start_date")
+        if entry_date:
+            pattern["dates"].add(entry_date)
+            # Parse weekday
+            try:
+                dt = pd.to_datetime(entry_date)
+                weekday_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+                pattern["weekdays"].add(weekday_map[dt.weekday()])
+            except:
+                pass
+
+        # Store pattern attributes
+        if pattern["color_code"] is None:
+            pattern["color_code"] = color_code
+        if pattern["label"] is None and label:
+            pattern["label"] = label
+        if pattern["notes"] is None and notes:
+            pattern["notes"] = notes
+        if pattern["unpaid_break"] is None and entry.get("unpaid_break"):
+            pattern["unpaid_break"] = entry.get("unpaid_break")
+
+        # Store example entry for reference
+        if pattern["example_entry"] is None:
+            pattern["example_entry"] = entry
+
+    # Convert patterns to shift templates
+    # Only create patterns that occur more than once (to filter out one-offs)
+    detected_patterns = []
+    added_shifts = []
+
+    for pattern_key, pattern in pattern_map.items():
+        # Skip rare patterns (less than 2 occurrences)
+        if pattern["count"] < 2:
+            continue
+
+        # Parse pattern key
+        parts = pattern_key.split(":")
+        if len(parts) < 3:
+            continue
+
+        time_part = parts[0]  # "start-end"
+        role_part = parts[1]   # role/notes
+        color_part = parts[2]  # color code
+
+        start_time, end_time = time_part.split("-")
+
+        # Create shift ID from role and time
+        shift_id = f"{role_part.lower().replace(' ', '-')}-{start_time.replace(':', '')}"
+
+        # Check if shift already exists in project
+        existing_shift = next((s for s in project.shifts if s.id == shift_id), None)
+
+        if existing_shift:
+            # Skip - already exists
+            detected_patterns.append({
+                "shift_id": shift_id,
+                "role": role_part,
+                "start_time": start_time,
+                "end_time": end_time,
+                "color_code": pattern["color_code"],
+                "occurrences": pattern["count"],
+                "weekdays": sorted(pattern["weekdays"]),
+                "status": "already_exists"
+            })
+        else:
+            # Create new shift template
+            new_shift = ShiftTemplate(
+                id=shift_id,
+                role=role_part,
+                start_time=start_time,
+                end_time=end_time,
+                weekdays=sorted(pattern["weekdays"]) if pattern["weekdays"] else ["Mon", "Tue", "Wed", "Thu", "Fri"],
+                required_count={},  # Will be filled manually by user
+                notes=pattern["notes"],
+                color_code=pattern["color_code"],
+                unpaid_break_minutes=pattern["unpaid_break"],
+                teams_label=pattern["label"],
+            )
+
+            project.shifts.append(new_shift)
+            added_shifts.append(new_shift)
+
+            detected_patterns.append({
+                "shift_id": shift_id,
+                "role": role_part,
+                "start_time": start_time,
+                "end_time": end_time,
+                "color_code": pattern["color_code"],
+                "occurrences": pattern["count"],
+                "weekdays": sorted(pattern["weekdays"]),
+                "status": "added"
+            })
+
+    return {
+        "detected_count": len(detected_patterns),
+        "added_count": len(added_shifts),
+        "patterns": detected_patterns,
+        "message": f"Detected {len(detected_patterns)} shift patterns, added {len(added_shifts)} new shift templates"
+    }
