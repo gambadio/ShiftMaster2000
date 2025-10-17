@@ -939,10 +939,10 @@ with tabs[6]:
         project.llm_config.max_tokens = st.number_input(
             "Max Tokens",
             min_value=100,
-            max_value=32000,
+            max_value=1000000,
             value=project.llm_config.max_tokens,
             step=100,
-            help="Maximum response length"
+            help="Maximum response length (will fall back to model's max if exceeded)"
         )
 
         project.llm_config.seed = st.number_input(
