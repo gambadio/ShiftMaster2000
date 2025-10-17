@@ -25,6 +25,7 @@ from export_teams import export_to_teams_excel, export_to_teams_excel_multisheet
 from preview import render_calendar_preview, render_statistics, render_conflicts
 from mcp_config import format_mcp_tools_for_prompt, get_mcp_server_examples
 from prompt_templates import build_system_prompt
+from translations import get_text
 
 st.set_page_config(page_title="Shift Prompt Studio", page_icon="🗓️", layout="wide")
 
@@ -82,8 +83,11 @@ if "chat_session" not in st.session_state:
     st.session_state.chat_session = ChatSession()
 if "llm_client" not in st.session_state:
     st.session_state.llm_client = None
+if "language" not in st.session_state:
+    st.session_state.language = "en"
 
 project: Project = st.session_state.project
+lang = st.session_state.language
 
 # Initialize LLM config if not present
 if project.llm_config is None:
@@ -103,18 +107,30 @@ if project.planning_period is None:
 # Sidebar: Project Management
 # ---------------------------------------------------------
 with st.sidebar:
-    st.title("🗓️ Shift Prompt Studio")
-    st.caption("Microsoft Teams-compatible shift planning with AI")
+    st.title(f"🗓️ {get_text('app_title', lang)}")
+    st.caption(get_text('app_caption', lang))
+
+    # Language selector
+    language_options = {"English": "en", "Deutsch": "de"}
+    selected_language = st.selectbox(
+        "🌐 Language / Sprache",
+        options=list(language_options.keys()),
+        index=list(language_options.values()).index(lang)
+    )
+    if language_options[selected_language] != lang:
+        st.session_state.language = language_options[selected_language]
+        st.rerun()
+
     st.write("---")
 
     colA, colB = st.columns([2,1])
     with colA:
-        project.name = st.text_input("Project name", value=project.name)
+        project.name = st.text_input(get_text('project_name', lang), value=project.name)
     with colB:
-        project.version = st.text_input("Version", value=project.version)
+        project.version = st.text_input(get_text('version', lang), value=project.version)
 
-    st.write("### Project file")
-    up = st.file_uploader("Load project (.json)", type=["json"], key="proj_upload")
+    st.write(f"### {get_text('project_file', lang)}")
+    up = st.file_uploader(get_text("load_project", lang), type=["json"], key="proj_upload")
     if up is not None:
         try:
             data = json.load(up)
@@ -139,18 +155,18 @@ with st.sidebar:
             st.error(f"Failed to load: {e}")
             st.exception(e)
 
-    dl_name = st.text_input("Save as", value=f"{project.name.replace(' ','_').lower()}.json")
+    dl_name = st.text_input(get_text("save_as", lang), value=f"{project.name.replace(' ','_').lower()}.json")
 
     # Option to save complete state or just project
     save_mode = st.radio(
-        "Save mode",
-        ["Complete state (all data)", "Project only (config)"],
+        get_text("save_mode", lang),
+        [get_text("complete_state", lang), get_text("project_only", lang)],
         help="Complete state saves everything (schedule, results, conversations). Project only saves configuration."
     )
 
-    if st.button("💾 Save project"):
+    if st.button(get_text("save_project", lang)):
         try:
-            if save_mode == "Complete state (all data)":
+            if save_mode == get_text("complete_state", lang):
                 save_complete_state(
                     dl_name,
                     project,
@@ -165,41 +181,41 @@ with st.sidebar:
                 st.success(f"✅ Project config saved to {dl_name}")
 
             with open(dl_name, "rb") as f:
-                st.download_button("⬇️ Download", data=f.read(), file_name=dl_name, mime="application/json")
+                st.download_button(get_text("download", lang), data=f.read(), file_name=dl_name, mime="application/json")
         except Exception as e:
             st.error(f"Save failed: {e}")
             st.exception(e)
 
     st.write("---")
-    st.write("### Quick Stats")
-    st.metric("Employees", len(project.employees))
-    st.metric("Shift Templates", len(project.shifts))
+    st.write(f"### {get_text('quick_stats', lang)}")
+    st.metric(get_text("employees", lang), len(project.employees))
+    st.metric(get_text("shift_templates", lang), len(project.shifts))
     if project.planning_period:
         days = (project.planning_period.end_date - project.planning_period.start_date).days + 1
-        st.metric("Planning Days", days)
+        st.metric(get_text("planning_days", lang), days)
 
 # ---------------------------------------------------------
 # Tab Structure
 # ---------------------------------------------------------
 tabs = st.tabs([
-    "👥 Employees",
-    "🔄 Shifts & Roles",
-    "📋 Rules",
-    "📤 Import Schedule",
-    "📅 Planning Period",
-    "📝 Prompt Preview",
-    "🤖 LLM Settings",
-    "💬 Chat",
-    "✨ Generate",
-    "👁️ Preview",
-    "💾 Export"
+    get_text("tab_employees", lang),
+    get_text("tab_shifts", lang),
+    get_text("tab_rules", lang),
+    get_text("tab_import", lang),
+    get_text("tab_planning", lang),
+    get_text("tab_prompt", lang),
+    get_text("tab_llm", lang),
+    get_text("tab_chat", lang),
+    get_text("tab_generate", lang),
+    get_text("tab_preview", lang),
+    get_text("tab_export", lang)
 ])
 
 # ---------------------------------------------------------
 # TAB 1: Employees
 # ---------------------------------------------------------
 with tabs[0]:
-    st.subheader("Employee Management")
+    st.subheader(get_text("employee_management", lang))
 
     if "editing_employee_id" not in st.session_state:
         st.session_state.editing_employee_id = None
@@ -210,24 +226,24 @@ with tabs[0]:
     if st.session_state.get("selected_emp_name"):
         selected_emp_name = st.session_state.selected_emp_name
     else:
-        selected_emp_name = "➕ New employee"
+        selected_emp_name = get_text("new_employee", lang)
 
-    if selected_emp_name == "➕ New employee":
+    if selected_emp_name == get_text("new_employee", lang):
         current_employee = None
     else:
         current_employee = next((e for e in project.employees if e.name == selected_emp_name), None)
 
     # Put the form ABOVE the selector
-    with st.expander("➕ Add / Edit Employee", expanded=True):
+    with st.expander(get_text("add_edit_employee", lang), expanded=True):
         col1, col2 = st.columns(2)
 
         with col1:
-            emp_name = st.text_input("Name*", value=current_employee.name if current_employee else "")
-            emp_email = st.text_input("Email (for Teams)*", value=current_employee.email if current_employee else "")
-            emp_group = st.text_input("Group/Team", value=current_employee.group if current_employee else "Service Desk")
+            emp_name = st.text_input(get_text("name", lang), value=current_employee.name if current_employee else "")
+            emp_email = st.text_input(get_text("email", lang), value=current_employee.email if current_employee else "")
+            emp_group = st.text_input(get_text("group_team", lang), value=current_employee.group if current_employee else "Service Desk")
 
         with col2:
-            emp_percent = st.number_input("Employment %", 0, 200,
+            emp_percent = st.number_input(get_text("employment_percent", lang), 0, 200,
                 value=current_employee.percent if (current_employee and current_employee.percent) else 100)
 
             # Role inference
@@ -242,7 +258,7 @@ with tabs[0]:
 
             current_roles = current_employee.roles if current_employee else []
             selected_roles = st.multiselect(
-                "Allowed roles",
+                get_text("allowed_roles", lang),
                 options=st.session_state.role_options,
                 default=current_roles,
                 key="emp_roles"
@@ -251,7 +267,7 @@ with tabs[0]:
         # Language multiselect with predefined options
         current_languages = current_employee.languages if current_employee else ["DE", "FR"]
         selected_languages = st.multiselect(
-            "Languages",
+            get_text("languages", lang),
             options=LANGUAGE_OPTIONS,
             default=current_languages,
             key="emp_languages",
@@ -260,13 +276,13 @@ with tabs[0]:
 
         col3, col4 = st.columns(2)
         with col3:
-            earliest = st.text_input("Earliest start (HH:MM)",
+            earliest = st.text_input(get_text("earliest_start", lang),
                 value=current_employee.earliest_start if current_employee and current_employee.earliest_start else "07:00")
         with col4:
-            latest = st.text_input("Latest end (HH:MM)",
+            latest = st.text_input(get_text("latest_end", lang),
                 value=current_employee.latest_end if current_employee and current_employee.latest_end else "19:00")
 
-        st.markdown("**Weekday blockers**")
+        st.markdown(f"**{get_text('weekday_blockers', lang)}**")
         weekdays = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
         blockers = {}
         cols = st.columns(7)
@@ -275,15 +291,15 @@ with tabs[0]:
             with cols[i]:
                 blockers[wd] = st.text_input(wd, value=existing_blockers.get(wd, ""), key=f"blk_{wd}")
 
-        hard_constraints = st.text_area("Hard constraints (one per line)", height=100,
+        hard_constraints = st.text_area(get_text("hard_constraints", lang), height=100,
             value="\n".join(current_employee.hard_constraints) if current_employee else "",
             key="emp_hard")
 
-        soft_preferences = st.text_area("Soft preferences (one per line)", height=100,
+        soft_preferences = st.text_area(get_text("soft_preferences", lang), height=100,
             value="\n".join(current_employee.soft_preferences) if current_employee else "",
             key="emp_soft")
 
-        if st.button("💾 Save Employee"):
+        if st.button(get_text("save_employee", lang)):
             if not emp_name.strip():
                 st.error("Name is required")
             elif not emp_email.strip():
@@ -317,8 +333,8 @@ with tabs[0]:
 
     # Selector comes AFTER the form
     selected_emp_name = st.selectbox(
-        "Select employee to edit",
-        options=["➕ New employee"] + existing_emp_names,
+        get_text("select_employee", lang),
+        options=[get_text("new_employee", lang)] + existing_emp_names,
         key="emp_selector",
         index=0 if not st.session_state.get("selected_emp_name") else
               (existing_emp_names.index(st.session_state.selected_emp_name) + 1
@@ -331,15 +347,15 @@ with tabs[0]:
         st.rerun()
 
     if project.employees:
-        st.markdown("#### Current Employees")
+        st.markdown(f"#### {get_text('current_employees', lang)}")
         df = pd.DataFrame([e.model_dump() for e in project.employees])
         st.dataframe(df, use_container_width=True)
 
-        to_remove = st.multiselect("Remove employees", [e.name for e in project.employees])
-        if st.button("🗑️ Remove Selected"):
+        to_remove = st.multiselect(get_text("remove_employees", lang), [e.name for e in project.employees])
+        if st.button(get_text("remove_selected", lang)):
             project.employees = [e for e in project.employees if e.name not in to_remove]
             if st.session_state.get("selected_emp_name") in to_remove:
-                st.session_state.selected_emp_name = "➕ New employee"
+                st.session_state.selected_emp_name = get_text("new_employee", lang)
             st.success("Removed")
             st.rerun()
 
@@ -347,33 +363,33 @@ with tabs[0]:
 # TAB 2: Shifts & Roles
 # ---------------------------------------------------------
 with tabs[1]:
-    st.subheader("Shift Templates & Roles")
+    st.subheader(get_text("shifts_roles", lang))
 
     if "editing_shift_id" not in st.session_state:
         st.session_state.editing_shift_id = None
 
-    shift_options = ["➕ New shift"] + [s.id for s in project.shifts]
+    shift_options = [get_text("new_shift", lang)] + [s.id for s in project.shifts]
 
     # Determine current shift first
     if st.session_state.get("selected_shift_id"):
         selected_shift_id = st.session_state.selected_shift_id
     else:
-        selected_shift_id = "➕ New shift"
+        selected_shift_id = get_text("new_shift", lang)
 
-    if selected_shift_id == "➕ New shift":
+    if selected_shift_id == get_text("new_shift", lang):
         current_shift = None
     else:
         current_shift = next((s for s in project.shifts if s.id == selected_shift_id), None)
 
     # Put the form ABOVE the selector
-    with st.expander("➕ Add / Edit Shift Template", expanded=True):
+    with st.expander(get_text("add_edit_shift", lang), expanded=True):
         col1, col2 = st.columns(2)
 
         with col1:
-            sid = st.text_input("Shift ID*", value=current_shift.id if current_shift else "contact-0700")
-            role = st.text_input("Role*", value=current_shift.role if current_shift else "Contact Team")
-            start = st.text_input("Start time (HH:MM)*", value=current_shift.start_time if current_shift else "07:00")
-            end = st.text_input("End time (HH:MM)*", value=current_shift.end_time if current_shift else "16:00")
+            sid = st.text_input(get_text("shift_id", lang), value=current_shift.id if current_shift else "contact-0700")
+            role = st.text_input(get_text("role", lang), value=current_shift.role if current_shift else "Contact Team")
+            start = st.text_input(get_text("start_time", lang), value=current_shift.start_time if current_shift else "07:00")
+            end = st.text_input(get_text("end_time", lang), value=current_shift.end_time if current_shift else "16:00")
 
         with col2:
             # Teams color picker
@@ -382,21 +398,21 @@ with tabs[1]:
             if current_shift and current_shift.color_code:
                 current_color = f"{current_shift.color_code}. {TEAMS_COLOR_NAMES.get(current_shift.color_code, '')}"
 
-            selected_color = st.selectbox("Teams Color*", options=color_options,
+            selected_color = st.selectbox(get_text("teams_color", lang), options=color_options,
                 index=color_options.index(current_color) if current_color in color_options else 0,
                 help="Color coding for Teams Shifts visual display")
             color_code = selected_color.split(".")[0]
 
-        weekdays = st.multiselect("Weekdays", ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+        weekdays = st.multiselect(get_text("weekdays", lang), ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
             default=current_shift.weekdays if current_shift else ["Mon","Tue","Wed","Thu","Fri"])
 
         # Concurrent shifts
         other_shifts = [s.id for s in project.shifts if s.id != (current_shift.id if current_shift else "")]
-        concurrent = st.multiselect("Can run concurrently with",
+        concurrent = st.multiselect(get_text("concurrent_shifts", lang),
             options=other_shifts,
             default=current_shift.concurrent_shifts if current_shift else [])
 
-        st.markdown("**Per-weekday required headcount**")
+        st.markdown(f"**{get_text('per_weekday_headcount', lang)}**")
         cols = st.columns(7)
         per = current_shift.required_count.copy() if current_shift else {}
         wds = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
@@ -408,9 +424,9 @@ with tabs[1]:
                 elif wd in per:
                     del per[wd]
 
-        notes = st.text_input("Notes", value=current_shift.notes if current_shift and current_shift.notes else "")
+        notes = st.text_input(get_text("notes", lang), value=current_shift.notes if current_shift and current_shift.notes else "")
 
-        if st.button("💾 Save Shift"):
+        if st.button(get_text("save_shift", lang)):
             if not sid.strip() or not role.strip():
                 st.error("Shift ID and Role are required")
             else:
@@ -438,7 +454,7 @@ with tabs[1]:
 
     # Selector comes AFTER the form
     selected_shift_id = st.selectbox(
-        "Select shift to edit",
+        get_text("select_shift", lang),
         options=shift_options,
         key="shift_selector",
         index=0 if not st.session_state.get("selected_shift_id") else
@@ -452,15 +468,15 @@ with tabs[1]:
         st.rerun()
 
     if project.shifts:
-        st.markdown("#### Current Shifts")
+        st.markdown(f"#### {get_text('current_shifts', lang)}")
         df = pd.DataFrame([s.model_dump() for s in project.shifts])
         st.dataframe(df, use_container_width=True)
 
-        to_remove = st.multiselect("Remove shifts", [s.id for s in project.shifts])
-        if st.button("🗑️ Remove Selected Shifts"):
+        to_remove = st.multiselect(get_text("remove_shifts", lang), [s.id for s in project.shifts])
+        if st.button(get_text("remove_selected_shifts", lang)):
             project.shifts = [s for s in project.shifts if s.id not in to_remove]
             if st.session_state.get("selected_shift_id") in to_remove:
-                st.session_state.selected_shift_id = "➕ New shift"
+                st.session_state.selected_shift_id = get_text("new_shift", lang)
             st.success("Removed")
             st.rerun()
 
@@ -468,46 +484,46 @@ with tabs[1]:
 # TAB 3: Rules & Preamble
 # ---------------------------------------------------------
 with tabs[2]:
-    st.subheader("Rules & Preamble")
+    st.subheader(get_text("rules_preamble", lang))
 
-    project.global_rules.preamble = st.text_area("System preamble",
+    project.global_rules.preamble = st.text_area(get_text("system_preamble", lang),
         value=project.global_rules.preamble, height=120)
 
-    project.global_rules.narrative_rules = st.text_area("Free-text rules and exceptions",
+    project.global_rules.narrative_rules = st.text_area(get_text("narrative_rules", lang),
         value=project.global_rules.narrative_rules, height=220,
         placeholder="Kein Pikett direkt nach Ferien...\nDispatcher: mind. 1 FR-sprechende Person...")
 
-    project.global_rules.output_format_instructions = st.text_area("Output format instructions",
+    project.global_rules.output_format_instructions = st.text_area(get_text("output_format", lang),
         value=project.global_rules.output_format_instructions, height=120)
 
 # ---------------------------------------------------------
 # TAB 4: Import Schedule
 # ---------------------------------------------------------
 with tabs[3]:
-    st.subheader("Import Microsoft Teams Schedule")
+    st.subheader(get_text("import_teams", lang))
     st.caption("Upload Teams export: either a single multi-sheet Excel file or separate shifts/time-off files")
 
     # Import mode selection
     import_mode = st.radio(
-        "Import mode",
-        options=["Single file (multi-sheet)", "Separate files (shifts + time-off)"],
+        get_text("import_mode", lang),
+        options=[get_text("single_file", lang), get_text("separate_files", lang)],
         help="Teams exports contain multiple sheets. You can upload the complete file or split files."
     )
 
-    if import_mode == "Single file (multi-sheet)":
+    if import_mode == get_text("single_file", lang):
         st.markdown("### Single File Import")
         st.caption("Upload the complete Teams export file (contains Schichten, Arbeitsfreie Zeit, Mitglieder)")
 
         # Checkbox for shift pattern detection
         auto_detect_shifts = st.checkbox(
-            "🔍 Auto-detect shift patterns",
+            get_text("auto_detect", lang),
             value=False,
             help="Automatically analyze the schedule data to detect and create shift templates based on recurring patterns (time + role + color)"
         )
 
-        teams_file = st.file_uploader("Teams Excel file", type=["xlsx","xls"], key="teams_multisheet_upload")
+        teams_file = st.file_uploader(get_text("teams_file", lang), type=["xlsx","xls"], key="teams_multisheet_upload")
 
-        if st.button("📥 Parse & Auto-Populate", key="parse_multisheet"):
+        if st.button(get_text("parse_populate", lang), key="parse_multisheet"):
             if teams_file is None:
                 st.error("Teams file is required")
             else:
@@ -554,32 +570,32 @@ with tabs[3]:
                     st.session_state.schedule_preview = preview
 
                     # Display preview summary
-                    st.markdown("### 📊 Import Summary")
+                    st.markdown(f"### {get_text('import_summary', lang)}")
 
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Past Entries", preview["summary"]["total_past_entries"])
+                        st.metric(get_text("past_entries", lang), preview["summary"]["total_past_entries"])
                     with col2:
-                        st.metric("Future Shifts", preview["summary"]["future_shifts"])
+                        st.metric(get_text("future_shifts", lang), preview["summary"]["future_shifts"])
                     with col3:
-                        st.metric("Future Time-Off", preview["summary"]["future_timeoff"])
+                        st.metric(get_text("future_timeoff", lang), preview["summary"]["future_timeoff"])
                     with col4:
                         st.metric("Employees", preview["summary"]["unique_employees_in_schedule"])
 
                     # Employee changes section
                     if employee_changes:
-                        st.markdown("### 👥 Employee Changes")
+                        st.markdown(f"### {get_text('employee_changes', lang)}")
                         emp_col1, emp_col2 = st.columns(2)
 
                         with emp_col1:
-                            st.metric("✅ Added", employee_changes["added_count"])
+                            st.metric(get_text("added", lang), employee_changes["added_count"])
                             if employee_changes["added_employees"]:
                                 with st.expander("View added employees"):
                                     added_df = pd.DataFrame(employee_changes["added_employees"])
                                     st.dataframe(added_df[["name", "email"]], use_container_width=True)
 
                         with emp_col2:
-                            st.metric("ℹ️ Already Existed", employee_changes["existing_count"])
+                            st.metric(get_text("already_existed", lang), employee_changes["existing_count"])
                             if employee_changes["existing_employees"]:
                                 with st.expander("View existing employees"):
                                     existing_df = pd.DataFrame(employee_changes["existing_employees"])
@@ -587,13 +603,13 @@ with tabs[3]:
 
                     # Shift pattern detection results
                     if shift_detection_result:
-                        st.markdown("### 🔍 Shift Pattern Detection")
+                        st.markdown(f"### {get_text('shift_detection', lang)}")
                         shift_col1, shift_col2 = st.columns(2)
 
                         with shift_col1:
-                            st.metric("✅ Patterns Detected", shift_detection_result["detected_count"])
+                            st.metric(get_text("patterns_detected", lang), shift_detection_result["detected_count"])
                         with shift_col2:
-                            st.metric("➕ New Shifts Added", shift_detection_result["added_count"])
+                            st.metric(get_text("new_shifts_added", lang), shift_detection_result["added_count"])
 
                         if shift_detection_result.get("patterns"):
                             with st.expander("View detected patterns"):
@@ -603,7 +619,7 @@ with tabs[3]:
                         st.success(shift_detection_result["message"])
 
                     # Preview sections
-                    st.markdown("### 📅 Schedule Preview")
+                    st.markdown(f"### {get_text('schedule_preview', lang)}")
 
                     # Future shifts preview
                     if preview["sample_future_shifts"]:
@@ -642,12 +658,12 @@ with tabs[3]:
         col1, col2 = st.columns(2)
 
         with col1:
-            shifts_file = st.file_uploader("Shifts file (Excel)", type=["xlsx","xls"], key="shifts_upload")
+            shifts_file = st.file_uploader(get_text("shifts_file", lang), type=["xlsx","xls"], key="shifts_upload")
 
         with col2:
-            timeoff_file = st.file_uploader("Time-off file (Excel, optional)", type=["xlsx","xls"], key="timeoff_upload")
+            timeoff_file = st.file_uploader(get_text("timeoff_file", lang), type=["xlsx","xls"], key="timeoff_upload")
 
-        if st.button("📥 Parse Separate Files", key="parse_dual"):
+        if st.button(get_text("parse_separate", lang), key="parse_dual"):
             if shifts_file is None:
                 st.error("Shifts file is required")
             else:
@@ -684,7 +700,7 @@ with tabs[3]:
     # Display loaded schedule summary
     if st.session_state.schedule_payload:
         st.markdown("---")
-        st.markdown("### ✅ Currently Loaded Schedule")
+        st.markdown(f"### {get_text('currently_loaded', lang)}")
 
         if "schedule_preview" in st.session_state and st.session_state.schedule_preview:
             preview = st.session_state.schedule_preview
@@ -692,9 +708,9 @@ with tabs[3]:
 
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Future Shifts", summary["future_shifts"])
+                st.metric(get_text("future_shifts", lang), summary["future_shifts"])
             with col2:
-                st.metric("Future Time-Off", summary["future_timeoff"])
+                st.metric(get_text("future_timeoff", lang), summary["future_timeoff"])
             with col3:
                 st.metric("Employees", summary["unique_employees_in_schedule"])
 
@@ -709,17 +725,17 @@ with tabs[3]:
 # TAB 5: Planning Period
 # ---------------------------------------------------------
 with tabs[4]:
-    st.subheader("Planning Period")
-    st.caption("Define the date range for schedule generation")
+    st.subheader(get_text("planning_period", lang))
+    st.caption(get_text("planning_caption", lang))
 
     col1, col2 = st.columns(2)
 
     with col1:
-        start_date = st.date_input("Start date",
+        start_date = st.date_input(get_text("start_date", lang),
             value=project.planning_period.start_date if project.planning_period else date.today())
 
     with col2:
-        end_date = st.date_input("End date",
+        end_date = st.date_input(get_text("end_date", lang),
             value=project.planning_period.end_date if project.planning_period else date.today() + timedelta(days=6))
 
     if start_date and end_date:
@@ -734,8 +750,8 @@ with tabs[4]:
 # TAB 6: Prompt Preview
 # ---------------------------------------------------------
 with tabs[5]:
-    st.subheader("System Prompt Preview")
-    st.caption("Preview the compiled system prompt that will be sent to the LLM")
+    st.subheader(get_text("prompt_preview", lang))
+    st.caption(get_text("prompt_caption", lang))
 
     # Compile the prompt
     today_iso = datetime.now(ZoneInfo("Europe/Zurich")).date().isoformat()
@@ -756,21 +772,21 @@ with tabs[5]:
     # Display stats
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Characters", f"{len(compiled):,}")
+        st.metric(get_text("characters", lang), f"{len(compiled):,}")
     with col2:
-        st.metric("Approx. Tokens", f"{len(compiled)//4:,}")
+        st.metric(get_text("approx_tokens", lang), f"{len(compiled)//4:,}")
     with col3:
         if st.session_state.schedule_payload:
-            st.metric("Schedule Included", "✓ Yes")
+            st.metric(get_text("schedule_included", lang), "✓ Yes")
         else:
-            st.metric("Schedule Included", "✗ No")
+            st.metric(get_text("schedule_included", lang), "✗ No")
 
     # Display prompt
     st.code(compiled, language="markdown")
 
     # Download button
     st.download_button(
-        "⬇️ Download Prompt (.txt)",
+        get_text("download_prompt", lang),
         data=compiled,
         file_name=f"{project.name.replace(' ','_')}_system_prompt.txt",
         mime="text/plain",
@@ -781,14 +797,14 @@ with tabs[5]:
 # TAB 7: LLM Settings
 # ---------------------------------------------------------
 with tabs[6]:
-    st.subheader("LLM Provider Configuration")
-    st.caption("Configure your LLM provider (OpenAI, OpenRouter, Azure, or Custom)")
+    st.subheader(get_text("llm_config", lang))
+    st.caption(get_text("llm_caption", lang))
 
     provider_config = project.llm_config.provider_config
 
     # Provider selection
     provider = st.selectbox(
-        "Provider",
+        get_text("provider", lang),
         options=[p.value for p in ProviderType],
         index=[p.value for p in ProviderType].index(provider_config.provider.value),
         format_func=lambda x: x.title()
@@ -802,7 +818,7 @@ with tabs[6]:
         st.markdown("### OpenAI Configuration")
 
         provider_config.api_key = st.text_input(
-            "API Key",
+            get_text("api_key", lang),
             value=provider_config.api_key,
             type="password",
             help="Your OpenAI API key (starts with sk-)"
@@ -811,7 +827,7 @@ with tabs[6]:
         # Fetch models button
         col1, col2 = st.columns([1, 3])
         with col1:
-            if st.button("🔄 Fetch Models"):
+            if st.button(get_text("fetch_models", lang)):
                 if provider_config.api_key:
                     try:
                         temp_client = create_llm_client(project.llm_config)
@@ -831,7 +847,7 @@ with tabs[6]:
                 model_options = ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o3-mini"]
 
             provider_config.model = st.selectbox(
-                "Model",
+                get_text("model", lang),
                 options=model_options,
                 index=model_options.index(provider_config.model) if provider_config.model in model_options else 0
             )
@@ -839,7 +855,7 @@ with tabs[6]:
         # Reasoning effort for o1/o3 models
         if provider_config.model and any(x in provider_config.model for x in ["o1", "o3", "gpt-5"]):
             project.llm_config.reasoning_effort = st.select_slider(
-                "Reasoning Effort",
+                get_text("reasoning_effort", lang),
                 options=["minimal", "low", "medium", "high"],
                 value=project.llm_config.reasoning_effort or "medium",
                 help="Controls thinking depth for reasoning models"
@@ -849,7 +865,7 @@ with tabs[6]:
         st.markdown("### OpenRouter Configuration")
 
         provider_config.api_key = st.text_input(
-            "API Key",
+            get_text("api_key", lang),
             value=provider_config.api_key,
             type="password",
             help="Your OpenRouter API key (starts with sk-or-v1-)"
@@ -871,7 +887,7 @@ with tabs[6]:
         # Model selection with provider prefix
         col1, col2 = st.columns([1, 3])
         with col1:
-            if st.button("🔄 Fetch Models"):
+            if st.button(get_text("fetch_models", lang)):
                 if provider_config.api_key:
                     try:
                         temp_client = create_llm_client(project.llm_config)
@@ -895,7 +911,7 @@ with tabs[6]:
                 ]
 
             provider_config.model = st.selectbox(
-                "Model",
+                get_text("model", lang),
                 options=model_options,
                 index=model_options.index(provider_config.model) if provider_config.model in model_options else 0,
                 help="Use provider/model format (e.g., openai/gpt-4o)"
@@ -905,7 +921,7 @@ with tabs[6]:
         st.markdown("### Azure OpenAI Configuration")
 
         provider_config.api_key = st.text_input(
-            "API Key",
+            get_text("api_key", lang),
             value=provider_config.api_key,
             type="password",
             help="Your Azure OpenAI API key"
@@ -951,7 +967,7 @@ with tabs[6]:
 
         col1, col2 = st.columns([1, 3])
         with col1:
-            if st.button("🔄 Fetch Models"):
+            if st.button(get_text("fetch_models", lang)):
                 if provider_config.base_url:
                     try:
                         temp_client = create_llm_client(project.llm_config)
@@ -976,12 +992,12 @@ with tabs[6]:
             )
 
     st.markdown("---")
-    st.markdown("### Generation Parameters")
+    st.markdown(f"### {get_text('generation_params', lang)}")
 
     col1, col2 = st.columns(2)
     with col1:
         project.llm_config.temperature = st.slider(
-            "Temperature",
+            get_text("temperature", lang),
             0.0, 2.0,
             project.llm_config.temperature,
             0.05,
@@ -989,7 +1005,7 @@ with tabs[6]:
         )
 
         project.llm_config.top_p = st.slider(
-            "Top P",
+            get_text("top_p", lang),
             0.0, 1.0,
             project.llm_config.top_p,
             0.05,
@@ -998,7 +1014,7 @@ with tabs[6]:
 
     with col2:
         project.llm_config.max_tokens = st.number_input(
-            "Max Tokens",
+            get_text("max_tokens", lang),
             min_value=100,
             max_value=1000000,
             value=project.llm_config.max_tokens,
@@ -1007,7 +1023,7 @@ with tabs[6]:
         )
 
         project.llm_config.seed = st.number_input(
-            "Seed (optional)",
+            get_text("seed", lang),
             min_value=0,
             max_value=999999,
             value=project.llm_config.seed or 0,
@@ -1019,7 +1035,7 @@ with tabs[6]:
     col3, col4 = st.columns(2)
     with col3:
         project.llm_config.frequency_penalty = st.slider(
-            "Frequency Penalty",
+            get_text("frequency_penalty", lang),
             -2.0, 2.0,
             project.llm_config.frequency_penalty,
             0.1,
@@ -1028,7 +1044,7 @@ with tabs[6]:
 
     with col4:
         project.llm_config.presence_penalty = st.slider(
-            "Presence Penalty",
+            get_text("presence_penalty", lang),
             -2.0, 2.0,
             project.llm_config.presence_penalty,
             0.1,
@@ -1036,20 +1052,20 @@ with tabs[6]:
         )
 
     project.llm_config.enable_streaming = st.checkbox(
-        "Enable Streaming",
+        get_text("enable_streaming", lang),
         value=project.llm_config.enable_streaming,
         help="Stream responses token by token"
     )
 
     project.llm_config.json_mode = st.checkbox(
-        "JSON Mode",
+        get_text("json_mode", lang),
         value=project.llm_config.json_mode,
         help="Request JSON-formatted output (if supported by provider)"
     )
 
     # Validate configuration
     st.markdown("---")
-    st.markdown("### Configuration Status")
+    st.markdown(f"### {get_text('config_status', lang)}")
 
     is_valid, error_msg = validate_provider_config(provider_config)
     if is_valid:
@@ -1067,10 +1083,10 @@ with tabs[6]:
         st.session_state.llm_client = None
 
     # MCP Servers
-    with st.expander("🔧 MCP Servers (Optional)"):
+    with st.expander(get_text("mcp_servers", lang)):
         st.caption("Model Context Protocol allows LLM to use external tools")
 
-        if st.button("➕ Add MCP Server"):
+        if st.button(get_text("add_mcp", lang)):
             project.llm_config.mcp_servers.append(MCPServerConfig(name="", command=""))
             st.rerun()
 
@@ -1101,8 +1117,8 @@ with tabs[6]:
 # TAB 8: Chat Interface
 # ---------------------------------------------------------
 with tabs[7]:
-    st.subheader("💬 Chat with LLM")
-    st.caption("Interactively refine your schedule using conversation")
+    st.subheader(get_text("chat_llm", lang))
+    st.caption(get_text("chat_caption", lang))
 
     if not st.session_state.llm_client:
         st.warning("⚠️ Please configure and validate your LLM settings first (LLM Settings tab)")
@@ -1113,19 +1129,19 @@ with tabs[7]:
         # Display token usage stats
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Prompt Tokens", f"{session.total_prompt_tokens:,}")
+            st.metric(get_text("prompt_tokens", lang), f"{session.total_prompt_tokens:,}")
         with col2:
-            st.metric("Completion Tokens", f"{session.total_completion_tokens:,}")
+            st.metric(get_text("completion_tokens", lang), f"{session.total_completion_tokens:,}")
         with col3:
             if session.total_reasoning_tokens > 0:
-                st.metric("Reasoning Tokens", f"{session.total_reasoning_tokens:,}")
+                st.metric(get_text("reasoning_tokens", lang), f"{session.total_reasoning_tokens:,}")
             else:
-                st.metric("Total Tokens", f"{session.total_prompt_tokens + session.total_completion_tokens:,}")
+                st.metric(get_text("total_tokens", lang), f"{session.total_prompt_tokens + session.total_completion_tokens:,}")
 
         st.markdown("---")
 
         # Display conversation history
-        st.markdown("### Conversation")
+        st.markdown(f"### {get_text('conversation', lang)}")
 
         if not session.messages:
             st.info("Start a conversation to generate or refine your schedule")
@@ -1146,13 +1162,13 @@ with tabs[7]:
 
         # Option to include system prompt
         include_system_prompt = st.checkbox(
-            "Include compiled system prompt",
+            get_text("include_system", lang),
             value=len(session.messages) == 0,
             help="For the first message, include the full shift planning context"
         )
 
         user_input = st.text_area(
-            "Your message",
+            get_text("your_message", lang),
             height=100,
             placeholder="E.g., 'Generate a schedule for next week' or 'Can you swap Alice and Bob on Monday?'",
             key="chat_input"
@@ -1160,11 +1176,11 @@ with tabs[7]:
 
         col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
-            send_button = st.button("📤 Send", type="primary", use_container_width=True)
+            send_button = st.button(get_text("send", lang), type="primary", use_container_width=True)
         with col2:
-            clear_button = st.button("🗑️ Clear Chat", use_container_width=True)
+            clear_button = st.button(get_text("clear_chat", lang), use_container_width=True)
         with col3:
-            if st.button("💾 Save to History", use_container_width=True):
+            if st.button(get_text("save_history", lang), use_container_width=True):
                 if session.messages:
                     st.session_state.llm_conversation.append({
                         "timestamp": datetime.now().isoformat(),
@@ -1249,7 +1265,7 @@ with tabs[7]:
 # TAB 9: Generate Schedule
 # ---------------------------------------------------------
 with tabs[8]:
-    st.subheader("Generate Schedule with LLM")
+    st.subheader(get_text("generate_schedule", lang))
 
     if not project.employees:
         st.warning("⚠️ Add employees first")
@@ -1260,7 +1276,7 @@ with tabs[8]:
     else:
         st.success(f"✅ Ready to generate schedule for {len(project.employees)} employees, {len(project.shifts)} shift types")
 
-        if st.button("🚀 Generate Schedule", type="primary"):
+        if st.button(get_text("generate_button", lang), type="primary"):
             with st.spinner("Generating schedule..."):
                 # Build prompt
                 planning_tuple = (
@@ -1294,7 +1310,7 @@ with tabs[8]:
                         with st.expander("🧠 Reasoning / Thinking"):
                             st.text(result["thinking"])
 
-                    st.markdown("### Generated Schedule")
+                    st.markdown(f"### {get_text('generated_schedule', lang)}")
                     st.code(result["content"], language="json")
 
                     # Try to parse and convert to entries
@@ -1325,7 +1341,7 @@ with tabs[8]:
 # TAB 10: Preview
 # ---------------------------------------------------------
 with tabs[9]:
-    st.subheader("Schedule Preview")
+    st.subheader(get_text("preview_schedule", lang))
 
     # Check what data we have available
     has_imported = st.session_state.schedule_payload is not None
@@ -1337,9 +1353,9 @@ with tabs[9]:
         # Tabs for switching between imported and generated views
         preview_tabs = []
         if has_imported:
-            preview_tabs.append("📤 Imported Schedule")
+            preview_tabs.append(get_text("imported_schedule", lang))
         if has_generated:
-            preview_tabs.append("✨ Generated Schedule")
+            preview_tabs.append(get_text("generated_sched", lang))
 
         if len(preview_tabs) > 1:
             preview_subtabs = st.tabs(preview_tabs)
@@ -1350,7 +1366,7 @@ with tabs[9]:
         if has_imported:
             tab_idx = 0
             with preview_subtabs[tab_idx]:
-                st.markdown("### Imported Teams Schedule Data")
+                st.markdown(f"### {get_text('imported_teams', lang)}")
 
                 payload = st.session_state.schedule_payload
                 past_entries = payload.get("past_entries", [])
@@ -1359,16 +1375,16 @@ with tabs[9]:
                 # Statistics
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Total Past Entries", len(past_entries))
+                    st.metric(get_text("total_past", lang), len(past_entries))
                 with col2:
                     future_shifts = sum(1 for e in future_entries if e.get("entry_type") == "shift")
-                    st.metric("Future Shifts", future_shifts)
+                    st.metric(get_text("future_shifts", lang), future_shifts)
                 with col3:
                     future_timeoff = sum(1 for e in future_entries if e.get("entry_type") == "time_off")
-                    st.metric("Future Time-Off", future_timeoff)
+                    st.metric(get_text("future_timeoff", lang), future_timeoff)
                 with col4:
                     unique_emps = len(set(e.get("employee") or "Unknown" for e in past_entries + future_entries))
-                    st.metric("Unique Employees", unique_emps)
+                    st.metric(get_text("unique_employees", lang), unique_emps)
 
                 st.markdown("---")
 
@@ -1403,7 +1419,7 @@ with tabs[9]:
                     max_date = max(dates)
 
                     # Calendar view
-                    st.markdown("### 📅 Calendar View")
+                    st.markdown(f"### {get_text('calendar_view', lang)}")
                     render_calendar_preview(
                         all_entries,
                         min_date,
@@ -1414,7 +1430,7 @@ with tabs[9]:
                 st.markdown("---")
 
                 # Data tables
-                st.markdown("### 📊 Data Tables")
+                st.markdown(f"### {get_text('data_tables', lang)}")
 
                 # Past entries
                 if past_entries:
@@ -1434,7 +1450,7 @@ with tabs[9]:
         if has_generated:
             tab_idx = 1 if has_imported else 0
             with preview_subtabs[tab_idx]:
-                st.markdown("### AI-Generated Schedule")
+                st.markdown(f"### {get_text('ai_generated', lang)}")
 
                 entries = st.session_state.generated_entries
 
@@ -1461,7 +1477,7 @@ with tabs[9]:
 # TAB 11: Export
 # ---------------------------------------------------------
 with tabs[10]:
-    st.subheader("Export to Microsoft Teams")
+    st.subheader(get_text("export_teams", lang))
 
     if not st.session_state.generated_entries:
         st.info("Generate a schedule first to export")
@@ -1472,18 +1488,18 @@ with tabs[10]:
 
         # Export mode selection
         export_mode = st.radio(
-            "Export format",
-            options=["Single file (multi-sheet)", "Separate files (shifts + time-off)"],
+            get_text("export_format", lang),
+            options=[get_text("single_file", lang), get_text("separate_files", lang)],
             help="Choose whether to export as one multi-sheet file or separate shift/time-off files"
         )
 
-        if export_mode == "Single file (multi-sheet)":
-            st.markdown("### Single File Export")
+        if export_mode == get_text("single_file", lang):
+            st.markdown(f"### {get_text('single_file_export', lang)}")
             st.caption("Creates one Excel file with sheets: Schichten, Arbeitsfreie Zeit, Mitglieder")
 
-            multisheet_filename = st.text_input("Excel filename", value="teams_schedule.xlsx")
+            multisheet_filename = st.text_input(get_text("excel_filename", lang), value="teams_schedule.xlsx")
 
-            if st.button("📥 Export Multi-Sheet Excel", key="export_multisheet"):
+            if st.button(get_text("export_multisheet", lang), key="export_multisheet"):
                 try:
                     # Get members from imported schedule if available
                     members = None
@@ -1508,16 +1524,16 @@ with tabs[10]:
                     st.exception(e)
 
         else:  # Separate files mode
-            st.markdown("### Separate Files Export")
+            st.markdown(f"### {get_text('separate_files_export', lang)}")
             st.caption("Creates two separate Excel files for shifts and time-off")
 
             col1, col2 = st.columns(2)
             with col1:
-                shifts_filename = st.text_input("Shifts filename", value="teams_shifts.xlsx")
+                shifts_filename = st.text_input(get_text("shifts_filename", lang), value="teams_shifts.xlsx")
             with col2:
-                timeoff_filename = st.text_input("Time-off filename", value="teams_timeoff.xlsx")
+                timeoff_filename = st.text_input(get_text("timeoff_filename", lang), value="teams_timeoff.xlsx")
 
-            if st.button("📥 Export to Separate Excel Files", key="export_dual"):
+            if st.button(get_text("export_dual", lang), key="export_dual"):
                 try:
                     export_to_teams_excel(entries, shifts_filename, timeoff_filename)
                     st.success(f"✅ Exported to {shifts_filename} and {timeoff_filename}")
@@ -1527,7 +1543,7 @@ with tabs[10]:
                     with col1:
                         with open(shifts_filename, "rb") as f:
                             st.download_button(
-                                "⬇️ Download Shifts File",
+                                get_text("download_shifts", lang),
                                 data=f.read(),
                                 file_name=shifts_filename,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1536,7 +1552,7 @@ with tabs[10]:
                     with col2:
                         with open(timeoff_filename, "rb") as f:
                             st.download_button(
-                                "⬇️ Download Time-off File",
+                                get_text("download_timeoff", lang),
                                 data=f.read(),
                                 file_name=timeoff_filename,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1548,7 +1564,7 @@ with tabs[10]:
                     st.exception(e)
 
         st.markdown("---")
-        st.markdown("### Manual Export")
+        st.markdown(f"### {get_text('manual_export', lang)}")
         st.caption("Copy the JSON output and process manually if needed")
 
         if st.session_state.generated_schedule:
