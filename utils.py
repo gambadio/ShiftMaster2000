@@ -171,8 +171,8 @@ def parse_schedule_to_payload(file_bytes: bytes, filename: str, today: date) -> 
     col_emp  = _pick(df, EMP_COL_CANDIDATES)
     col_role = _pick(df, ROLE_COL_CANDIDATES)
     col_shift= _pick(df, SHIFT_COL_CANDS)
-    col_start= _pick(df, START_COL_CANDS)
-    col_end  = _pick(df, END_COL_CANDS)
+    col_start= _pick(df, START_TIME_CANDS)
+    col_end  = _pick(df, END_TIME_CANDS)
     col_type = _pick(df, TYPE_COL_CANDS)
     col_notes= _pick(df, NOTES_COL_CANDS)
 
