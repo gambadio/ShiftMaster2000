@@ -2,16 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Knowledge Base
+## Required Reading
 
-This project maintains a `knowledge.md` file containing researched technical knowledge, API documentation, coding principles, and best practices. **You MUST consult this file** when working on tasks related to:
+This project maintains two critical documentation files that **you MUST consult** before making code changes:
+
+### `projectstructure.md` - Project Structure Reference
+**Always consult this file first** when:
+- Locating specific functionality or understanding code organization
+- Planning changes that affect multiple files or components
+- Understanding data flows and integration points
+- Finding exact line numbers for functions, classes, or configuration
+
+The structure file provides a comprehensive map of the entire codebase with exact line numbers, making it the fastest way to understand where code lives and how components interact.
+
+### `knowledge.md` - Technical Knowledge Base
+**Consult this file** when working on tasks related to:
 - External APIs and their integration patterns
 - Framework-specific conventions and best practices
 - Architectural decisions and design patterns
 - Library usage and configuration
 - Any technical specifications documented therein
 
-Always check `knowledge.md` first before making assumptions about how to implement features or solve technical problems.
+**Workflow:** Check `projectstructure.md` first to find where code lives, then consult `knowledge.md` for implementation guidance.
 
 ---
 
