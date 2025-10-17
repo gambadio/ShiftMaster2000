@@ -20,12 +20,12 @@ def render_calendar_preview(
     title: str = "Schedule Preview"
 ):
     """
-    Render a calendar-style preview of the schedule
+    Render a calendar-style preview of the schedule with navigation
 
     Args:
         schedule_entries: List of ScheduleEntry objects
-        start_date: Start date of the view
-        end_date: End date of the view
+        start_date: Start date of the overall schedule range
+        end_date: End date of the overall schedule range
         title: Title for the preview section
     """
     st.subheader(title)
@@ -34,12 +34,75 @@ def render_calendar_preview(
         st.info("No schedule entries to display.")
         return
 
-    # Generate date range
-    dates = []
-    current = start_date
-    while current <= end_date:
-        dates.append(current)
-        current += timedelta(days=1)
+    # Initialize session state for calendar view offset (weeks from start)
+    view_key = f"calendar_view_offset_{title}"
+    if view_key not in st.session_state:
+        st.session_state[view_key] = 0
+
+    # Navigation controls
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
+
+    with col1:
+        if st.button("◀ Previous Week", key=f"prev_{title}"):
+            st.session_state[view_key] -= 1
+            st.rerun()
+
+    with col2:
+        if st.button("Next Week ▶", key=f"next_{title}"):
+            st.session_state[view_key] += 1
+            st.rerun()
+
+    with col3:
+        if st.button("📅 Go to Latest", key=f"today_{title}"):
+            # Find the latest date with entries, or use today
+            latest_entry_date = max(
+                (datetime.fromisoformat(e.start_date).date() for e in schedule_entries),
+                default=date.today()
+            )
+
+            # Use the latest entry date if it exists and is >= today, otherwise use today
+            target_date = max(latest_entry_date, date.today())
+
+            # Align target to the Monday of its week
+            days_since_monday = target_date.weekday()
+            week_start = target_date - timedelta(days=days_since_monday)
+
+            # Calculate weeks from start_date to target week
+            days_diff = (week_start - start_date).days
+            st.session_state[view_key] = max(0, days_diff // 7)
+            st.rerun()
+
+    with col4:
+        st.caption(f"Viewing Week {st.session_state[view_key] + 1}")
+
+    # Calculate view window (7 days, Monday-Sunday)
+    days_per_view = 7
+    offset_start = start_date + timedelta(days=st.session_state[view_key] * days_per_view)
+
+    # Align to week start (Monday)
+    days_since_monday = offset_start.weekday()  # 0 = Monday, 6 = Sunday
+    view_start = offset_start - timedelta(days=days_since_monday)
+    view_end = view_start + timedelta(days=6)  # Always show full week (Mon-Sun)
+
+    # Ensure we don't go before start_date
+    if view_start < start_date:
+        view_start = start_date
+        # Realign to Monday
+        days_since_monday = view_start.weekday()
+        view_start = view_start - timedelta(days=days_since_monday)
+        st.session_state[view_key] = 0
+
+    if view_start > end_date:
+        # Go to the last full week
+        view_start = end_date - timedelta(days=end_date.weekday() + 6)
+        if view_start < start_date:
+            view_start = start_date - timedelta(days=start_date.weekday())
+        st.session_state[view_key] = max(0, (view_start - start_date).days // days_per_view)
+
+    view_end = view_start + timedelta(days=6)
+
+    # Generate date range for current view (always 7 days)
+    dates = [view_start + timedelta(days=i) for i in range(7)]
 
     # Get unique employees
     employees = sorted(set(entry.employee_name for entry in schedule_entries))
@@ -191,31 +254,37 @@ def render_calendar_preview(
     # Header row with week info
     html_parts.append('<thead>')
 
-    # Week row - show week number when it changes
+    # Week row - calculate colspan for each week
     html_parts.append('<tr><th class="week-header">Week</th>')
+    week_groups = []
     current_week = None
     for d in dates:
         week_num = d.isocalendar()[1]
-        # Show week number when it changes
         if week_num != current_week:
-            html_parts.append(f'<th class="week-header">Week {week_num}</th>')
+            week_groups.append({'week': week_num, 'count': 1})
             current_week = week_num
         else:
-            html_parts.append(f'<th class="week-header"></th>')
+            week_groups[-1]['count'] += 1
+
+    for wg in week_groups:
+        html_parts.append(f'<th class="week-header" colspan="{wg["count"]}">Week {wg["week"]}</th>')
     html_parts.append('</tr>')
 
-    # Month row - show month name when it changes
+    # Month row - calculate colspan for each month
     html_parts.append('<tr><th class="week-header">Month</th>')
+    month_groups = []
     current_month = None
     for d in dates:
-        month_name = d.strftime("%B %Y")  # e.g., "September 2025"
+        month_name = d.strftime("%B %Y")
         month_key = (d.year, d.month)
-        # Show month name when it changes
         if month_key != current_month:
-            html_parts.append(f'<th class="week-header">{month_name}</th>')
+            month_groups.append({'name': month_name, 'count': 1})
             current_month = month_key
         else:
-            html_parts.append(f'<th class="week-header"></th>')
+            month_groups[-1]['count'] += 1
+
+    for mg in month_groups:
+        html_parts.append(f'<th class="week-header" colspan="{mg["count"]}">{mg["name"]}</th>')
     html_parts.append('</tr>')
 
     # Date row
