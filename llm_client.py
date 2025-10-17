@@ -114,6 +114,43 @@ class LLMClient:
             print(f"Error fetching models: {e}")
             return []
 
+    def _get_model_max_tokens(self, model_name: str) -> int:
+        """
+        Get maximum supported tokens for a model.
+        Returns the model's max if known, otherwise returns a high default.
+        """
+        # Known model limits (can be expanded)
+        model_limits = {
+            # OpenAI models
+            "gpt-4o": 16384,
+            "gpt-4o-mini": 16384,
+            "gpt-4-turbo": 128000,
+            "gpt-4": 8192,
+            "gpt-3.5-turbo": 16385,
+            "o1": 100000,
+            "o1-mini": 65536,
+            "o3-mini": 200000,
+            # Anthropic models
+            "claude-3-opus": 200000,
+            "claude-3-sonnet": 200000,
+            "claude-3-haiku": 200000,
+            "claude-3.5-sonnet": 200000,
+            "claude-3.7-sonnet": 200000,
+            # Google models
+            "gemini-pro": 30720,
+            "gemini-1.5-pro": 1000000,
+            # Meta models
+            "llama-3.1-405b": 128000,
+        }
+
+        # Check exact match or partial match
+        for known_model, limit in model_limits.items():
+            if known_model in model_name.lower():
+                return limit
+
+        # Default to high limit for unknown models
+        return 128000
+
     def _build_completion_params(
         self,
         messages: List[Dict[str, str]],
@@ -127,11 +164,20 @@ class LLMClient:
         if self.provider_config.provider == ProviderType.AZURE:
             model_name = self.provider_config.azure_deployment or model_name
 
+        # Handle max_tokens with fallback
+        requested_max_tokens = self.config.max_tokens
+        model_max_tokens = self._get_model_max_tokens(model_name)
+        actual_max_tokens = min(requested_max_tokens, model_max_tokens)
+
+        # Log if we're falling back
+        if actual_max_tokens < requested_max_tokens:
+            print(f"Note: Requested max_tokens ({requested_max_tokens}) exceeds model limit ({model_max_tokens}). Using {actual_max_tokens}.")
+
         params = {
             "model": model_name,
             "messages": messages,
             "temperature": self.config.temperature,
-            "max_tokens": self.config.max_tokens,
+            "max_tokens": actual_max_tokens,
             "top_p": self.config.top_p,
             "frequency_penalty": self.config.frequency_penalty,
             "presence_penalty": self.config.presence_penalty,
