@@ -8,7 +8,24 @@ from __future__ import annotations
 from typing import List, Dict, Any
 from datetime import datetime
 import pandas as pd
+import platform
 from models import ScheduleEntry, TEAMS_COLOR_NAMES
+
+
+def _parse_date(date_str: str) -> datetime:
+    """Parse date string in multiple formats (M/D/YYYY, YYYY-MM-DD, D/M/YYYY)"""
+    for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y"]:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Cannot parse date: {date_str}")
+
+
+def _format_date_for_teams(dt: datetime) -> str:
+    """Format datetime as M/D/YYYY (cross-platform)"""
+    # Manual formatting to avoid platform-specific issues with %-m
+    return f"{dt.month}/{dt.day}/{dt.year}"
 
 
 def export_to_teams_excel(
@@ -90,11 +107,11 @@ def _export_shifts_file(shifts: List[ScheduleEntry], output_path: str) -> None:
 
     for shift in shifts:
         # Format dates and times for Teams (M/D/YYYY and HH:MM)
-        start_date_obj = datetime.fromisoformat(shift.start_date)
-        end_date_obj = datetime.fromisoformat(shift.end_date)
+        start_date_obj = _parse_date(shift.start_date)
+        end_date_obj = _parse_date(shift.end_date)
 
-        start_date_str = start_date_obj.strftime("%-m/%-d/%Y")  # M/D/YYYY
-        end_date_str = end_date_obj.strftime("%-m/%-d/%Y")
+        start_date_str = _format_date_for_teams(start_date_obj)
+        end_date_str = _format_date_for_teams(end_date_obj)
 
         # Get color name with number
         color_display = _format_color_code(shift.color_code)
@@ -125,11 +142,11 @@ def _export_timeoff_file(timeoffs: List[ScheduleEntry], output_path: str) -> Non
 
     for entry in timeoffs:
         # Format dates for Teams (M/D/YYYY)
-        start_date_obj = datetime.fromisoformat(entry.start_date)
-        end_date_obj = datetime.fromisoformat(entry.end_date)
+        start_date_obj = _parse_date(entry.start_date)
+        end_date_obj = _parse_date(entry.end_date)
 
-        start_date_str = start_date_obj.strftime("%-m/%-d/%Y")
-        end_date_str = end_date_obj.strftime("%-m/%-d/%Y")
+        start_date_str = _format_date_for_teams(start_date_obj)
+        end_date_str = _format_date_for_teams(end_date_obj)
 
         # Time-off typically uses "00:00" for times or blank
         start_time = entry.start_time if entry.start_time else "00:00"
@@ -171,11 +188,11 @@ def _prepare_shifts_dataframe(shifts: List[ScheduleEntry]) -> pd.DataFrame:
 
     for shift in shifts:
         # Format dates and times for Teams (M/D/YYYY and HH:MM)
-        start_date_obj = datetime.fromisoformat(shift.start_date)
-        end_date_obj = datetime.fromisoformat(shift.end_date)
+        start_date_obj = _parse_date(shift.start_date)
+        end_date_obj = _parse_date(shift.end_date)
 
-        start_date_str = start_date_obj.strftime("%-m/%-d/%Y")  # M/D/YYYY
-        end_date_str = end_date_obj.strftime("%-m/%-d/%Y")
+        start_date_str = _format_date_for_teams(start_date_obj)
+        end_date_str = _format_date_for_teams(end_date_obj)
 
         # Get color name with number
         color_display = _format_color_code(shift.color_code)
@@ -205,11 +222,11 @@ def _prepare_timeoff_dataframe(timeoffs: List[ScheduleEntry]) -> pd.DataFrame:
 
     for entry in timeoffs:
         # Format dates for Teams (M/D/YYYY)
-        start_date_obj = datetime.fromisoformat(entry.start_date)
-        end_date_obj = datetime.fromisoformat(entry.end_date)
+        start_date_obj = _parse_date(entry.start_date)
+        end_date_obj = _parse_date(entry.end_date)
 
-        start_date_str = start_date_obj.strftime("%-m/%-d/%Y")
-        end_date_str = end_date_obj.strftime("%-m/%-d/%Y")
+        start_date_str = _format_date_for_teams(start_date_obj)
+        end_date_str = _format_date_for_teams(end_date_obj)
 
         # Time-off typically uses "00:00" for times or blank
         start_time = entry.start_time if entry.start_time else "00:00"
