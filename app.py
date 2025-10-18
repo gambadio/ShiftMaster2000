@@ -3,6 +3,7 @@ Shift Prompt Studio - Enhanced with Teams Integration
 """
 
 import json
+import os
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
@@ -31,6 +32,38 @@ from prompt_templates import build_system_prompt
 from translations import get_text
 
 st.set_page_config(page_title="Shift Prompt Studio", page_icon="🗓️", layout="wide")
+
+# Display autosave restoration banner at the very top
+if st.session_state.get("autosave_available"):
+    col1, col2, col3 = st.columns([6, 2, 2])
+    with col1:
+        st.info(f"💾 **Autosave found** from {st.session_state.get('autosave_time', 'unknown')} - Would you like to restore it?")
+    with col2:
+        if st.button("✅ Restore", key="restore_autosave"):
+            try:
+                state = load_complete_state(st.session_state.autosave_data)
+                # Restore state
+                st.session_state.project = state["project"]
+                st.session_state.schedule_manager = ScheduleManager(state["project"])
+                if state.get("schedule_manager_state"):
+                    st.session_state.schedule_manager.project.schedule_state = state["schedule_manager_state"]
+                if state["schedule_payload"]:
+                    st.session_state.schedule_payload = state["schedule_payload"]
+                if state["generated_schedule"]:
+                    st.session_state.generated_schedule = state["generated_schedule"]
+                if state["generated_entries"]:
+                    st.session_state.generated_entries = state["generated_entries"]
+                if state["llm_conversation"]:
+                    st.session_state.llm_conversation = state["llm_conversation"]
+                st.session_state.autosave_available = False
+                st.success("✅ Autosave restored!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to restore autosave: {e}")
+    with col3:
+        if st.button("❌ Ignore", key="ignore_autosave"):
+            st.session_state.autosave_available = False
+            st.rerun()
 
 # ---------------------------------------------------------
 # Language options compatible with Teams Shifts
@@ -90,6 +123,21 @@ if "llm_client" not in st.session_state:
     st.session_state.llm_client = None
 if "language" not in st.session_state:
     st.session_state.language = "en"
+if "autosave_checked" not in st.session_state:
+    st.session_state.autosave_checked = False
+
+# Check for autosave file on first load
+if not st.session_state.autosave_checked and os.path.exists(".autosave.json"):
+    try:
+        with open(".autosave.json", "r") as f:
+            autosave_data = json.load(f)
+            saved_at = autosave_data.get("saved_at", "unknown")
+            st.session_state.autosave_data = autosave_data
+            st.session_state.autosave_available = True
+            st.session_state.autosave_time = saved_at
+    except:
+        pass
+    st.session_state.autosave_checked = True
 
 project: Project = st.session_state.project
 lang = st.session_state.language
@@ -144,6 +192,14 @@ with st.sidebar:
 
             # Restore all session state
             st.session_state.project = state["project"]
+
+            # Reinitialize schedule manager with loaded project
+            st.session_state.schedule_manager = ScheduleManager(state["project"])
+
+            # Restore schedule manager state if available
+            if state.get("schedule_manager_state"):
+                st.session_state.schedule_manager.project.schedule_state = state["schedule_manager_state"]
+
             if state["schedule_payload"]:
                 st.session_state.schedule_payload = state["schedule_payload"]
             if state["generated_schedule"]:
@@ -154,7 +210,8 @@ with st.sidebar:
                 st.session_state.llm_conversation = state["llm_conversation"]
 
             st.success(f"✅ Loaded: {state['project'].name}")
-            st.info(f"📊 Restored: {len(state['generated_entries'])} entries, {len(state['llm_conversation'])} conversations")
+            entries_count = len(st.session_state.schedule_manager.get_all_entries())
+            st.info(f"📊 Restored: {entries_count} schedule entries, {len(state['llm_conversation'])} conversations")
             st.rerun()
         except Exception as e:
             st.error(f"Failed to load: {e}")
@@ -172,15 +229,18 @@ with st.sidebar:
     if st.button(get_text("save_project", lang)):
         try:
             if save_mode == get_text("complete_state", lang):
+                # Save complete state including schedule manager
                 save_complete_state(
                     dl_name,
                     project,
                     schedule_payload=st.session_state.get("schedule_payload"),
                     generated_schedule=st.session_state.get("generated_schedule"),
                     generated_entries=st.session_state.get("generated_entries", []),
-                    llm_conversation=st.session_state.get("llm_conversation", [])
+                    llm_conversation=st.session_state.get("llm_conversation", []),
+                    schedule_manager_state=st.session_state.schedule_manager.state
                 )
-                st.success(f"✅ Complete state saved to {dl_name}")
+                entries_count = len(st.session_state.schedule_manager.get_all_entries())
+                st.success(f"✅ Complete state saved to {dl_name} ({entries_count} schedule entries)")
             else:
                 save_project(dl_name, project)
                 st.success(f"✅ Project config saved to {dl_name}")
@@ -192,9 +252,58 @@ with st.sidebar:
             st.exception(e)
 
     st.write("---")
+
+    # Auto-save and Clear State Controls
+    st.write(f"### ⚙️ State Management")
+
+    # Auto-save toggle
+    auto_save_enabled = st.checkbox(
+        "🔄 Auto-save on changes",
+        value=st.session_state.get("auto_save_enabled", False),
+        help="Automatically save state to .autosave.json when changes are made"
+    )
+    st.session_state.auto_save_enabled = auto_save_enabled
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 Quick Save", help="Save current state to .autosave.json"):
+            try:
+                save_complete_state(
+                    ".autosave.json",
+                    project,
+                    schedule_payload=st.session_state.get("schedule_payload"),
+                    generated_schedule=st.session_state.get("generated_schedule"),
+                    generated_entries=st.session_state.get("generated_entries", []),
+                    llm_conversation=st.session_state.get("llm_conversation", []),
+                    schedule_manager_state=st.session_state.schedule_manager.state
+                )
+                st.success("✅ Auto-saved")
+            except Exception as e:
+                st.error(f"Auto-save failed: {e}")
+
+    with col2:
+        if st.button("🗑️ Clear All", help="Reset all data (employees, shifts, schedules, etc.)", type="secondary"):
+            # Confirm clear
+            if st.session_state.get("confirm_clear"):
+                st.session_state.project = Project()
+                st.session_state.schedule_manager = ScheduleManager(st.session_state.project)
+                st.session_state.schedule_payload = None
+                st.session_state.generated_schedule = None
+                st.session_state.generated_entries = []
+                st.session_state.llm_conversation = []
+                st.session_state.confirm_clear = False
+                st.success("✅ All data cleared")
+                st.rerun()
+            else:
+                st.session_state.confirm_clear = True
+                st.warning("⚠️ Click 'Clear All' again to confirm")
+
+    st.write("---")
     st.write(f"### {get_text('quick_stats', lang)}")
     st.metric(get_text("employees", lang), len(project.employees))
     st.metric(get_text("shift_templates", lang), len(project.shifts))
+    entries_count = len(st.session_state.schedule_manager.get_all_entries())
+    st.metric("Schedule Entries", entries_count)
     if project.planning_period:
         days = (project.planning_period.end_date - project.planning_period.start_date).days + 1
         st.metric(get_text("planning_days", lang), days)

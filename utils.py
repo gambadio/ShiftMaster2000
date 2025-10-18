@@ -46,24 +46,27 @@ def save_complete_state(
     schedule_payload: Optional[Dict[str, Any]] = None,
     generated_schedule: Optional[Dict[str, Any]] = None,
     generated_entries: Optional[List[Any]] = None,
-    llm_conversation: Optional[List[Dict[str, Any]]] = None
+    llm_conversation: Optional[List[Dict[str, Any]]] = None,
+    schedule_manager_state: Optional[Any] = None
 ) -> None:
     """
     Save complete application state including:
     - Project configuration (employees, shifts, rules, LLM config)
+    - Schedule manager state (uploaded/generated entries, conflicts)
     - Imported schedule data (schedule_payload)
     - Generated schedule output
     - Generated schedule entries
     - LLM conversation history
     """
     state = {
-        "version": "1.0",
+        "version": "2.0",  # Bumped version for schedule manager support
         "saved_at": datetime.now().isoformat(),
         "project": project.model_dump(),
         "schedule_payload": schedule_payload,
         "generated_schedule": generated_schedule,
         "generated_entries": [e.model_dump() if hasattr(e, 'model_dump') else e for e in (generated_entries or [])],
-        "llm_conversation": llm_conversation or []
+        "llm_conversation": llm_conversation or [],
+        "schedule_manager_state": schedule_manager_state.model_dump() if schedule_manager_state and hasattr(schedule_manager_state, 'model_dump') else None
     }
 
     # Serialize dates
@@ -83,11 +86,12 @@ def load_project_dict(data: Dict[str, Any]) -> Project:
 def load_complete_state(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Load complete application state from dict.
-    Returns dict with keys: project, schedule_payload, generated_schedule, generated_entries, llm_conversation
+    Returns dict with keys: project, schedule_payload, generated_schedule, generated_entries,
+    llm_conversation, schedule_manager_state
     """
     # Check if this is a complete state file
     if "version" in data and "project" in data:
-        from models import ScheduleEntry
+        from models import ScheduleEntry, ScheduleState, GeneratedScheduleEntry
 
         # Convert generated_entries back to ScheduleEntry objects
         generated_entries = []
@@ -98,12 +102,21 @@ def load_complete_state(data: Dict[str, Any]) -> Dict[str, Any]:
                 except:
                     pass  # Skip invalid entries
 
+        # Restore schedule manager state if present (v2.0+)
+        schedule_manager_state = None
+        if data.get("schedule_manager_state"):
+            try:
+                schedule_manager_state = ScheduleState.model_validate(data["schedule_manager_state"])
+            except:
+                pass  # Fall back to None if invalid
+
         return {
             "project": Project.model_validate(data["project"]),
             "schedule_payload": data.get("schedule_payload"),
             "generated_schedule": data.get("generated_schedule"),
             "generated_entries": generated_entries,
-            "llm_conversation": data.get("llm_conversation", [])
+            "llm_conversation": data.get("llm_conversation", []),
+            "schedule_manager_state": schedule_manager_state
         }
     else:
         # Old format - just project
@@ -112,7 +125,8 @@ def load_complete_state(data: Dict[str, Any]) -> Dict[str, Any]:
             "schedule_payload": None,
             "generated_schedule": None,
             "generated_entries": [],
-            "llm_conversation": []
+            "llm_conversation": [],
+            "schedule_manager_state": None
         }
 
 # ----------------------------
@@ -1156,15 +1170,17 @@ def convert_uploaded_entries_to_schedule_entries(
     from models import GeneratedScheduleEntry
     
     entries = []
-    
+
     # Process past entries (shifts and time-off)
-    for past_entry in schedule_payload.get("past", []):
+    past_entries = schedule_payload.get("past_entries", schedule_payload.get("past", []))
+    for past_entry in past_entries:
         entry = _payload_entry_to_schedule_entry(past_entry, source="uploaded")
         if entry:
             entries.append(entry)
-    
+
     # Process future entries
-    for future_entry in schedule_payload.get("future", []):
+    future_entries = schedule_payload.get("future_entries", schedule_payload.get("future", []))
+    for future_entry in future_entries:
         entry = _payload_entry_to_schedule_entry(future_entry, source="uploaded")
         if entry:
             entries.append(entry)

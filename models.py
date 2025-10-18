@@ -231,7 +231,7 @@ class GeneratedScheduleEntry(BaseModel):
     start_time: str  # "HH:MM"
     end_date: str  # "M/D/YYYY"
     end_time: str  # "HH:MM"
-    color_code: str  # "1. Weiß", "2. Blau", etc.
+    color_code: Optional[str] = "1. Weiß"  # "1. Weiß", "2. Blau", etc. - defaults to white if not specified
     label: Optional[str] = None  # "Operation Lead", role/shift name
     unpaid_break: Optional[int] = None  # Minutes
     notes: Optional[str] = None
