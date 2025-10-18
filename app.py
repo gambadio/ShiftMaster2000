@@ -136,6 +136,8 @@ if "last_generation_notes" not in st.session_state:
     st.session_state.last_generation_notes = None
 
 
+CHAT_FEATURE_ENABLED = False
+
 def log_debug_event(message: str) -> None:
     """Append a timestamped debug message to session state."""
     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -333,6 +335,76 @@ with st.sidebar:
 # ---------------------------------------------------------
 # Tab Structure
 # ---------------------------------------------------------
+chat_tooltip = get_text("chat_tooltip", lang).replace('"', '\\"')
+st.markdown(
+    f"""
+    <style>
+    div[data-baseweb="tab-list"] > div:nth-child(8) button,
+    div[data-baseweb="tab-list"] > button:nth-child(8) {{
+        opacity: 0.4;
+        cursor: not-allowed !important;
+    }}
+    div[data-baseweb="tab-list"] > div:nth-child(8),
+    div[data-baseweb="tab-list"] > button:nth-child(8) {{
+        position: relative;
+    }}
+    div[data-baseweb="tab-list"] > div:nth-child(8)::after,
+    div[data-baseweb="tab-list"] > button:nth-child(8)::after {{
+        content: "{chat_tooltip}";
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(32, 32, 32, 0.9);
+        color: #fff;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        white-space: nowrap;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+        z-index: 5;
+    }}
+    div[data-baseweb="tab-list"] > div:nth-child(8):hover::after,
+    div[data-baseweb="tab-list"] > button:nth-child(8):hover::after {{
+        opacity: 1;
+    }}
+    </style>
+    <script>
+    (function() {{
+        const disableChatTab = () => {{
+            const tabLists = document.querySelectorAll('div[data-baseweb="tab-list"]');
+            tabLists.forEach((list) => {{
+                const tabs = list.querySelectorAll('[role="tab"]');
+                if (tabs.length >= 8) {{
+                    const chatTab = tabs[7];
+                    if (!chatTab.dataset.shiftmasterDisabled) {{
+                        chatTab.dataset.shiftmasterDisabled = "true";
+                        chatTab.setAttribute("aria-disabled", "true");
+                        chatTab.addEventListener("click", (event) => {{
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }});
+                        chatTab.addEventListener("keydown", (event) => {{
+                            if (event.key === "Enter" || event.key === " ") {{
+                                event.preventDefault();
+                            }}
+                        }});
+                    }}
+                }}
+            }});
+        }};
+        const observer = new MutationObserver(disableChatTab);
+        observer.observe(document.body, {{ childList: true, subtree: true }});
+        disableChatTab();
+    }})();
+    </script>
+    """,
+    unsafe_allow_html=True
+)
+
 tabs = st.tabs([
     get_text("tab_employees", lang),
     get_text("tab_shifts", lang),
@@ -1319,122 +1391,125 @@ with tabs[7]:
     st.subheader(get_text("chat_llm", lang))
     st.caption(get_text("chat_caption", lang))
 
-    if not st.session_state.llm_client:
-        st.warning("⚠️ Please configure and validate your LLM settings first (LLM Settings tab)")
+    if not CHAT_FEATURE_ENABLED:
+        st.info(get_text("chat_wip_message", lang))
     else:
-        client = st.session_state.llm_client
-        session = st.session_state.chat_session
-
-        # Display token usage stats
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(get_text("prompt_tokens", lang), f"{session.total_prompt_tokens:,}")
-        with col2:
-            st.metric(get_text("completion_tokens", lang), f"{session.total_completion_tokens:,}")
-        with col3:
-            if session.total_reasoning_tokens > 0:
-                st.metric(get_text("reasoning_tokens", lang), f"{session.total_reasoning_tokens:,}")
-            else:
-                st.metric(get_text("total_tokens", lang), f"{session.total_prompt_tokens + session.total_completion_tokens:,}")
-
-        st.markdown("---")
-
-        # Display conversation history
-        st.markdown(f"### {get_text('conversation', lang)}")
-
-        if not session.messages:
-            st.info("Start a conversation to generate or refine your schedule")
+        if not st.session_state.llm_client:
+            st.warning("⚠️ Please configure and validate your LLM settings first (LLM Settings tab)")
         else:
-            for i, msg in enumerate(session.messages):
-                if msg.role == "system":
-                    continue  # Don't display system messages
+            client = st.session_state.llm_client
+            session = st.session_state.chat_session
 
-                with st.chat_message(msg.role):
-                    st.markdown(msg.content)
+            # Display token usage stats
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(get_text("prompt_tokens", lang), f"{session.total_prompt_tokens:,}")
+            with col2:
+                st.metric(get_text("completion_tokens", lang), f"{session.total_completion_tokens:,}")
+            with col3:
+                if session.total_reasoning_tokens > 0:
+                    st.metric(get_text("reasoning_tokens", lang), f"{session.total_reasoning_tokens:,}")
+                else:
+                    st.metric(get_text("total_tokens", lang), f"{session.total_prompt_tokens + session.total_completion_tokens:,}")
 
-                    # Show reasoning tokens for assistant messages
-                    if msg.role == "assistant" and msg.reasoning_tokens:
-                        st.caption(f"🧠 Reasoning tokens: {msg.reasoning_tokens:,}")
+            st.markdown("---")
 
-        # Chat input
-        st.markdown("---")
+            # Display conversation history
+            st.markdown(f"### {get_text('conversation', lang)}")
 
-        # Option to include system prompt
-        include_system_prompt = st.checkbox(
-            get_text("include_system", lang),
-            value=len(session.messages) == 0,
-            help="For the first message, include the full shift planning context"
-        )
+            if not session.messages:
+                st.info("Start a conversation to generate or refine your schedule")
+            else:
+                for i, msg in enumerate(session.messages):
+                    if msg.role == "system":
+                        continue  # Don't display system messages
 
-        user_input = st.text_area(
-            get_text("your_message", lang),
-            height=100,
-            placeholder="E.g., 'Generate a schedule for next week' or 'Can you swap Alice and Bob on Monday?'",
-            key="chat_input"
-        )
+                    with st.chat_message(msg.role):
+                        st.markdown(msg.content)
 
-        col1, col2, col3 = st.columns([2, 1, 1])
-        with col1:
-            send_button = st.button(get_text("send", lang), type="primary", use_container_width=True)
-        with col2:
-            clear_button = st.button(get_text("clear_chat", lang), use_container_width=True)
-        with col3:
-            if st.button(get_text("save_history", lang), use_container_width=True):
-                if session.messages:
-                    st.session_state.llm_conversation.append({
-                        "timestamp": datetime.now().isoformat(),
-                        "messages": [m.model_dump() for m in session.messages],
-                        "stats": {
-                            "prompt_tokens": session.total_prompt_tokens,
-                            "completion_tokens": session.total_completion_tokens,
-                            "reasoning_tokens": session.total_reasoning_tokens
-                        }
-                    })
-                    st.success("💾 Conversation saved to history")
+                        # Show reasoning tokens for assistant messages
+                        if msg.role == "assistant" and msg.reasoning_tokens:
+                            st.caption(f"🧠 Reasoning tokens: {msg.reasoning_tokens:,}")
 
-        if clear_button:
-            st.session_state.chat_session = ChatSession()
-            st.rerun()
+            # Chat input
+            st.markdown("---")
 
-        if send_button and user_input.strip():
-            # Prepare system prompt if requested
-            system_prompt = None
-            if include_system_prompt and not session.messages:
-                # Compile the full system prompt
-                today_iso = datetime.now(ZoneInfo("Europe/Zurich")).date().isoformat()
-                planning_tuple = None
-                if project.planning_period:
-                    planning_tuple = (
-                        project.planning_period.start_date.isoformat(),
-                        project.planning_period.end_date.isoformat()
+            # Option to include system prompt
+            include_system_prompt = st.checkbox(
+                get_text("include_system", lang),
+                value=len(session.messages) == 0,
+                help="For the first message, include the full shift planning context"
+            )
+
+            user_input = st.text_area(
+                get_text("your_message", lang),
+                height=100,
+                placeholder="E.g., 'Generate a schedule for next week' or 'Can you swap Alice and Bob on Monday?'",
+                key="chat_input"
+            )
+
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                send_button = st.button(get_text("send", lang), type="primary", use_container_width=True)
+            with col2:
+                clear_button = st.button(get_text("clear_chat", lang), use_container_width=True)
+            with col3:
+                if st.button(get_text("save_history", lang), use_container_width=True):
+                    if session.messages:
+                        st.session_state.llm_conversation.append({
+                            "timestamp": datetime.now().isoformat(),
+                            "messages": [m.model_dump() for m in session.messages],
+                            "stats": {
+                                "prompt_tokens": session.total_prompt_tokens,
+                                "completion_tokens": session.total_completion_tokens,
+                                "reasoning_tokens": session.total_reasoning_tokens
+                            }
+                        })
+                        st.success("💾 Conversation saved to history")
+
+            if clear_button:
+                st.session_state.chat_session = ChatSession()
+                st.rerun()
+
+            if send_button and user_input.strip():
+                # Prepare system prompt if requested
+                system_prompt = None
+                if include_system_prompt and not session.messages:
+                    # Compile the full system prompt
+                    today_iso = datetime.now(ZoneInfo("Europe/Zurich")).date().isoformat()
+                    planning_tuple = None
+                    if project.planning_period:
+                        planning_tuple = (
+                            project.planning_period.start_date.isoformat(),
+                            project.planning_period.end_date.isoformat()
+                        )
+
+                    system_prompt = build_system_prompt(
+                        project,
+                        schedule_payload=st.session_state.schedule_payload,
+                        today_iso=today_iso,
+                        planning_period=planning_tuple
                     )
 
-                system_prompt = build_system_prompt(
-                    project,
-                    schedule_payload=st.session_state.schedule_payload,
-                    today_iso=today_iso,
-                    planning_period=planning_tuple
-                )
+                    # Add MCP tools if configured
+                    if project.llm_config.mcp_servers:
+                        mcp_tools_section = format_mcp_tools_for_prompt(project.llm_config.mcp_servers)
+                        system_prompt += "\n\n" + mcp_tools_section
 
-                # Add MCP tools if configured
-                if project.llm_config.mcp_servers:
-                    mcp_tools_section = format_mcp_tools_for_prompt(project.llm_config.mcp_servers)
-                    system_prompt += "\n\n" + mcp_tools_section
+                # Send message
+                with st.spinner("🤔 Thinking..."):
+                    try:
+                        response_msg = client.chat(
+                            user_message=user_input,
+                            session=session,
+                            system_prompt=system_prompt
+                        )
 
-            # Send message
-            with st.spinner("🤔 Thinking..."):
-                try:
-                    response_msg = client.chat(
-                        user_message=user_input,
-                        session=session,
-                        system_prompt=system_prompt
-                    )
+                        st.rerun()
 
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"Chat failed: {e}")
-                    st.exception(e)
+                    except Exception as e:
+                        st.error(f"Chat failed: {e}")
+                        st.exception(e)
 
         # Conversation history
         if st.session_state.llm_conversation:

@@ -33,7 +33,7 @@ TRANSLATIONS = {
         "tab_planning": "📅 Planning Period",
         "tab_prompt": "📝 Prompt Preview",
         "tab_llm": "🤖 LLM Settings",
-        "tab_chat": "💬 Chat",
+        "tab_chat": "💬 Chat (WIP)",
         "tab_generate": "✨ Generate",
         "tab_preview": "👁️ Preview",
         "tab_export": "💾 Export",
@@ -158,6 +158,8 @@ TRANSLATIONS = {
         "clear_chat": "🗑️ Clear Chat",
         "save_history": "💾 Save to History",
         "conversation_history": "📚 Conversation History",
+        "chat_tooltip": "🚧 Work in progress",
+        "chat_wip_message": "🚧 Chat is under construction. Stay tuned for a future update.",
 
         # Generate tab
         "generate_schedule": "Generate Schedule with LLM",
@@ -256,7 +258,7 @@ TRANSLATIONS = {
         "tab_planning": "📅 Planungszeitraum",
         "tab_prompt": "📝 Prompt-Vorschau",
         "tab_llm": "🤖 LLM-Einstellungen",
-        "tab_chat": "💬 Chat",
+        "tab_chat": "💬 Chat (In Arbeit)",
         "tab_generate": "✨ Generieren",
         "tab_preview": "👁️ Vorschau",
         "tab_export": "💾 Exportieren",
@@ -381,6 +383,8 @@ TRANSLATIONS = {
         "clear_chat": "🗑️ Chat löschen",
         "save_history": "💾 Im Verlauf speichern",
         "conversation_history": "📚 Konversationsverlauf",
+        "chat_tooltip": "🚧 In Arbeit",
+        "chat_wip_message": "🚧 Der Chat befindet sich im Aufbau. Bleiben Sie dran für ein zukünftiges Update.",
 
         # Generate tab
         "generate_schedule": "Zeitplan mit LLM generieren",
