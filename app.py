@@ -1634,7 +1634,7 @@ with tabs[9]:
         )
 
     # Control Panel
-    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+    col1, col2, col3 = st.columns([2, 2, 2])
 
     with col1:
         if st.button("🗑️ Clear Generated", help="Remove all generated schedule entries"):
@@ -1651,14 +1651,6 @@ with tabs[9]:
             st.rerun()
 
     with col3:
-        if st.button("🔄 Regenerate", help="Clear generated entries and return to generation tab"):
-            schedule_mgr.clear_generated()
-            st.session_state.generated_entries = []
-            st.session_state.last_generated_payload = None
-            st.info("Generated entries cleared. Go to 'Shift Prompt Studio' tab to regenerate.")
-            log_debug_event("Regenerate triggered: cleared existing generated entries")
-
-    with col4:
         # Excel Export
         if len(all_entries) > 0:
             if st.button("📥 Export to Excel", help="Export schedule to Teams-compatible Excel file"):
