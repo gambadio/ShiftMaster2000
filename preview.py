@@ -7,6 +7,7 @@ Displays schedule in a Teams Shifts-style calendar view
 from __future__ import annotations
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date, timedelta
+import re
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -25,6 +26,33 @@ def _parse_entry_date(date_str: Optional[str]) -> Optional[date]:
         except ValueError:
             continue
     return None
+
+
+def _normalize_color_code(value: Optional[str]) -> str:
+    """Return Teams color code (1-13) even when value includes names like '1. Weiß'."""
+    if not value:
+        return "1"
+
+    candidate = value.strip()
+
+    # Direct match on numeric codes
+    if candidate in TEAMS_COLOR_NAMES:
+        return candidate
+
+    # Extract first digit sequence (handles '1. Weiß', 'Color 2', etc.)
+    match = re.search(r"\d+", candidate)
+    if match:
+        code = match.group(0)
+        if code in TEAMS_COLOR_NAMES:
+            return code
+
+    normalized_candidate = candidate.lower().replace("ß", "ss")
+    for code, name in TEAMS_COLOR_NAMES.items():
+        normalized_name = name.lower().replace("ß", "ss")
+        if normalized_candidate == normalized_name or normalized_name in normalized_candidate:
+            return code
+
+    return "1"
 
 
 def render_calendar_preview(
@@ -175,10 +203,29 @@ def render_calendar_preview(
             line-height: 1.3;
             cursor: pointer;
             transition: transform 0.1s;
+            position: relative;
+            border: 2px solid transparent;
         }
         .shift-block:hover {
             transform: scale(1.02);
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .shift-block.generated {
+            border-color: rgba(255, 255, 255, 0.5);
+            box-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+        }
+        .shift-block.generated::after {
+            content: "LLM";
+            position: absolute;
+            top: -10px;
+            right: 4px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            padding: 1px 4px;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.35);
+            color: #ffffff;
         }
         .shift-label {
             font-weight: 600;
@@ -305,7 +352,9 @@ def render_calendar_preview(
             html_parts.append('<td class="day-cell">')
 
             for entry in entries_for_day:
-                color_class = f"color-{entry.color_code}" if entry.color_code else "color-1"
+                color_code = _normalize_color_code(entry.color_code)
+                color_class = f"color-{color_code}"
+                extra_class = " generated" if getattr(entry, "source", "") == "generated" else ""
 
                 # Format time display
                 time_str = ""
@@ -319,11 +368,12 @@ def render_calendar_preview(
                 if entry.entry_type == "time_off":
                     label = entry.reason or "Time Off"
                     color_class = "color-13"  # Force grey for time-off
+                    extra_class = ""
                 else:
                     # Show notes first (e.g., "Contact Team", "Dispatcher"), then label, then default
                     label = entry.notes or entry.label or "Shift"
 
-                html_parts.append(f'<div class="shift-block {color_class}">')
+                html_parts.append(f'<div class="shift-block {color_class}{extra_class}">')
                 html_parts.append(f'<span class="shift-label">{label}</span>')
                 if time_str:
                     html_parts.append(f'<div class="shift-time">{time_str}</div>')
