@@ -1063,6 +1063,53 @@ with tabs[6]:
         help="Request JSON-formatted output (if supported by provider)"
     )
 
+    # Reasoning/Thinking parameters
+    with st.expander("🧠 Advanced: Reasoning & Thinking Controls", expanded=False):
+        st.caption("Configure extended thinking for reasoning-capable models (OpenAI o1/o3, OpenRouter, Claude)")
+
+        # Reasoning effort (OpenAI/OpenRouter)
+        reasoning_effort_options = ["None", "low", "medium", "high"]
+        current_effort = project.llm_config.reasoning_effort or "None"
+        selected_effort = st.selectbox(
+            "💭 Reasoning Effort",
+            options=reasoning_effort_options,
+            index=reasoning_effort_options.index(current_effort) if current_effort in reasoning_effort_options else 0,
+            help="How deeply the model thinks:\n- **low**: Quick, lightweight reasoning\n- **medium**: Balanced thinking (recommended)\n- **high**: Deep, thorough reasoning\n\nSupported by: OpenAI o1/o3, OpenRouter models"
+        )
+        project.llm_config.reasoning_effort = selected_effort if selected_effort != "None" else None
+
+        # Reasoning max tokens (OpenRouter/Claude)
+        col_r1, col_r2 = st.columns(2)
+        with col_r1:
+            reasoning_max_tokens = st.number_input(
+                "🎯 Max Reasoning Tokens",
+                min_value=0,
+                max_value=100000,
+                value=project.llm_config.reasoning_max_tokens or 0,
+                step=1000,
+                help="Maximum tokens for reasoning/thinking (0 = unlimited)\n\nSupported by: OpenRouter, Claude"
+            )
+            project.llm_config.reasoning_max_tokens = reasoning_max_tokens if reasoning_max_tokens > 0 else None
+
+        with col_r2:
+            # Budget tokens (Claude extended thinking)
+            budget_tokens = st.number_input(
+                "🧮 Claude Budget Tokens",
+                min_value=0,
+                max_value=100000,
+                value=project.llm_config.budget_tokens or 0,
+                step=1024,
+                help="Extended thinking budget for Claude (min 1024)\n\nLeave at 0 for standard mode."
+            )
+            project.llm_config.budget_tokens = budget_tokens if budget_tokens >= 1024 else None
+
+        # Reasoning exclude (OpenRouter)
+        project.llm_config.reasoning_exclude = st.checkbox(
+            "🚫 Hide Reasoning from Output",
+            value=project.llm_config.reasoning_exclude,
+            help="Let the model think internally but don't show the reasoning in the final response (OpenRouter only)"
+        )
+
     # Validate configuration
     st.markdown("---")
     st.markdown(f"### {get_text('config_status', lang)}")

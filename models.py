@@ -154,8 +154,13 @@ class LLMConfig(BaseModel):
     json_mode: bool = True  # Request JSON output
     enable_streaming: bool = True  # Stream responses
 
-    # OpenAI reasoning models (o1, o3)
-    reasoning_effort: Optional[str] = None  # "minimal", "low", "medium", "high"
+    # Reasoning/Thinking parameters (OpenAI o1/o3, OpenRouter, Claude)
+    reasoning_effort: Optional[str] = None  # "low", "medium", "high" (OpenAI/OpenRouter)
+    reasoning_max_tokens: Optional[int] = None  # Max tokens for reasoning (OpenRouter/Claude)
+    reasoning_exclude: bool = False  # Exclude reasoning from response (OpenRouter)
+
+    # Claude-specific extended thinking
+    budget_tokens: Optional[int] = None  # Claude: 1024-10000+ for extended thinking
 
     # Advanced features
     seed: Optional[int] = None  # For reproducible outputs

@@ -2,19 +2,18 @@
 LLM Manager with Extended Thinking and Reasoning Support
 
 Supports:
-- Claude extended thinking with budget_tokens
-- OpenAI reasoning_effort parameter
-- Streaming with callbacks
-- MCP integration
+- OpenAI (including o1/o3 reasoning models)
+- OpenRouter (with reasoning parameter support)
+- Azure OpenAI
+- Claude (via Anthropic SDK with extended thinking)
+- Generic OpenAI-compatible endpoints
 """
 
 from __future__ import annotations
 import asyncio
-from typing import Dict, Any, Optional, Callable, List
-import requests
-import json
+from typing import Dict, Any, Optional, Callable
 
-from models import LLMConfig
+from models import LLMConfig, ProviderType
 
 
 async def call_llm_with_reasoning(
@@ -37,135 +36,18 @@ async def call_llm_with_reasoning(
     Returns:
         Dict with 'content', 'thinking', 'usage', and 'model' keys
     """
-    if config.model_family.lower() == "claude":
-        return await _call_claude(prompt, config, user_message, on_chunk, on_thinking)
-    elif config.model_family.lower() == "openai":
+    provider = config.provider_config.provider
+
+    # Route to appropriate provider implementation
+    if provider == ProviderType.OPENAI:
         return await _call_openai(prompt, config, user_message, on_chunk, on_thinking)
+    elif provider == ProviderType.OPENROUTER:
+        return await _call_openrouter(prompt, config, user_message, on_chunk, on_thinking)
+    elif provider == ProviderType.AZURE:
+        return await _call_azure(prompt, config, user_message, on_chunk, on_thinking)
     else:
-        # Custom/fallback
-        return await _call_generic(prompt, config, user_message, on_chunk)
-
-
-async def _call_claude(
-    prompt: str,
-    config: LLMConfig,
-    user_message: str,
-    on_chunk: Optional[Callable[[str], None]],
-    on_thinking: Optional[Callable[[str], None]],
-) -> Dict[str, Any]:
-    """Call Claude with extended thinking support"""
-    try:
-        import anthropic
-    except ImportError:
-        raise ImportError("anthropic package not installed. Run: pip install anthropic>=0.40.0")
-
-    client = anthropic.Anthropic()
-
-    # Build messages
-    messages = [
-        {"role": "user", "content": user_message}
-    ]
-
-    # Build request parameters
-    params: Dict[str, Any] = {
-        "model": config.model_name,
-        "max_tokens": config.max_tokens,
-        "temperature": config.temperature,
-        "system": prompt,
-        "messages": messages,
-    }
-
-    # Add extended thinking if configured
-    extra_headers = {}
-    if config.budget_tokens and config.budget_tokens >= 1024:
-        params["thinking"] = {
-            "type": "enabled",
-            "budget_tokens": config.budget_tokens
-        }
-
-    # Add interleaved thinking beta header if enabled
-    if config.enable_interleaved_thinking:
-        extra_headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
-
-    if extra_headers:
-        params["extra_headers"] = extra_headers
-
-    # Stream or non-stream
-    if config.enable_streaming:
-        return await _stream_claude(client, params, on_chunk, on_thinking)
-    else:
-        response = client.messages.create(**params)
-        return _parse_claude_response(response)
-
-
-async def _stream_claude(
-    client,
-    params: Dict[str, Any],
-    on_chunk: Optional[Callable[[str], None]],
-    on_thinking: Optional[Callable[[str], None]],
-) -> Dict[str, Any]:
-    """Stream Claude response"""
-    full_content = []
-    full_thinking = []
-    usage_info = {}
-
-    with client.messages.stream(**params) as stream:
-        for event in stream:
-            if event.type == "content_block_start":
-                if hasattr(event, "content_block") and hasattr(event.content_block, "type"):
-                    if event.content_block.type == "thinking":
-                        # Thinking block started
-                        pass
-            elif event.type == "content_block_delta":
-                if hasattr(event, "delta"):
-                    if event.delta.type == "text_delta":
-                        text = event.delta.text
-                        full_content.append(text)
-                        if on_chunk:
-                            on_chunk(text)
-                    elif event.delta.type == "thinking_delta":
-                        thinking_text = event.delta.thinking
-                        full_thinking.append(thinking_text)
-                        if on_thinking:
-                            on_thinking(thinking_text)
-            elif event.type == "message_stop":
-                # Stream complete
-                pass
-
-    # Get final message
-    final_message = stream.get_final_message()
-
-    return {
-        "content": "".join(full_content),
-        "thinking": "".join(full_thinking) if full_thinking else None,
-        "usage": {
-            "input_tokens": final_message.usage.input_tokens if hasattr(final_message, "usage") else 0,
-            "output_tokens": final_message.usage.output_tokens if hasattr(final_message, "usage") else 0,
-        },
-        "model": final_message.model,
-    }
-
-
-def _parse_claude_response(response) -> Dict[str, Any]:
-    """Parse non-streaming Claude response"""
-    content_parts = []
-    thinking_parts = []
-
-    for block in response.content:
-        if block.type == "text":
-            content_parts.append(block.text)
-        elif block.type == "thinking":
-            thinking_parts.append(block.thinking)
-
-    return {
-        "content": "".join(content_parts),
-        "thinking": "".join(thinking_parts) if thinking_parts else None,
-        "usage": {
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-        },
-        "model": response.model,
-    }
+        # Custom/generic OpenAI-compatible endpoint
+        return await _call_generic(prompt, config, user_message, on_chunk, on_thinking)
 
 
 async def _call_openai(
@@ -175,13 +57,13 @@ async def _call_openai(
     on_chunk: Optional[Callable[[str], None]],
     on_thinking: Optional[Callable[[str], None]],
 ) -> Dict[str, Any]:
-    """Call OpenAI with reasoning_effort support"""
+    """Call OpenAI API with reasoning_effort support for o1/o3 models"""
     try:
-        import openai
+        from openai import OpenAI
     except ImportError:
-        raise ImportError("openai package not installed. Run: pip install openai>=1.105.0")
+        raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
 
-    client = openai.OpenAI()
+    client = OpenAI(api_key=config.provider_config.api_key)
 
     # Build messages
     messages = [
@@ -191,13 +73,16 @@ async def _call_openai(
 
     # Build request parameters
     params: Dict[str, Any] = {
-        "model": config.model_name,
+        "model": config.provider_config.model,
         "messages": messages,
         "temperature": config.temperature,
         "max_tokens": config.max_tokens,
+        "top_p": config.top_p,
+        "frequency_penalty": config.frequency_penalty,
+        "presence_penalty": config.presence_penalty,
     }
 
-    # Add reasoning_effort for o1/o3/GPT-5 models
+    # Add reasoning_effort for o1/o3 models
     if config.reasoning_effort:
         params["reasoning_effort"] = config.reasoning_effort
 
@@ -205,26 +90,204 @@ async def _call_openai(
     if config.json_mode:
         params["response_format"] = {"type": "json_object"}
 
+    # Add seed for reproducibility
+    if config.seed is not None:
+        params["seed"] = config.seed
+
     # Stream or non-stream
     if config.enable_streaming:
-        return await _stream_openai(client, params, on_chunk, on_thinking)
+        return await _stream_openai_style(client, params, on_chunk, on_thinking)
     else:
         response = client.chat.completions.create(**params)
         return _parse_openai_response(response)
 
 
-async def _stream_openai(
+async def _call_openrouter(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str,
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+) -> Dict[str, Any]:
+    """Call OpenRouter API with reasoning parameter support via extra_body"""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
+
+    # Build headers
+    headers = {}
+    if config.provider_config.http_referer:
+        headers["HTTP-Referer"] = config.provider_config.http_referer
+    if config.provider_config.x_title:
+        headers["X-Title"] = config.provider_config.x_title
+
+    client = OpenAI(
+        base_url=config.provider_config.get_base_url(),
+        api_key=config.provider_config.api_key,
+        default_headers=headers if headers else None,
+    )
+
+    # Build messages
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_message}
+    ]
+
+    # Build request parameters
+    params: Dict[str, Any] = {
+        "model": config.provider_config.model,
+        "messages": messages,
+        "temperature": config.temperature,
+        "max_tokens": config.max_tokens,
+        "top_p": config.top_p,
+        "frequency_penalty": config.frequency_penalty,
+        "presence_penalty": config.presence_penalty,
+    }
+
+    # Build extra_body for OpenRouter-specific parameters
+    extra_body = {}
+
+    # Add OpenRouter reasoning parameter via extra_body
+    reasoning_config = {}
+    if config.reasoning_effort:
+        reasoning_config["effort"] = config.reasoning_effort
+    if config.reasoning_max_tokens:
+        reasoning_config["max_tokens"] = config.reasoning_max_tokens
+    if config.reasoning_exclude:
+        reasoning_config["exclude"] = True
+
+    if reasoning_config:
+        extra_body["reasoning"] = reasoning_config
+
+    # Add extra_body to params if not empty
+    if extra_body:
+        params["extra_body"] = extra_body
+
+    # Add JSON mode if requested
+    if config.json_mode:
+        params["response_format"] = {"type": "json_object"}
+
+    # Add seed for reproducibility
+    if config.seed is not None:
+        params["seed"] = config.seed
+
+    # Stream or non-stream
+    if config.enable_streaming:
+        return await _stream_openai_style(client, params, on_chunk, on_thinking)
+    else:
+        response = client.chat.completions.create(**params)
+        return _parse_openai_response(response)
+
+
+async def _call_azure(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str,
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+) -> Dict[str, Any]:
+    """Call Azure OpenAI API"""
+    try:
+        from openai import AzureOpenAI
+    except ImportError:
+        raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
+
+    client = AzureOpenAI(
+        api_key=config.provider_config.api_key,
+        api_version=config.provider_config.api_version,
+        azure_endpoint=config.provider_config.azure_endpoint,
+    )
+
+    # Build messages
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_message}
+    ]
+
+    # Build request parameters
+    params: Dict[str, Any] = {
+        "model": config.provider_config.azure_deployment,  # Azure uses deployment name
+        "messages": messages,
+        "temperature": config.temperature,
+        "max_tokens": config.max_tokens,
+        "top_p": config.top_p,
+        "frequency_penalty": config.frequency_penalty,
+        "presence_penalty": config.presence_penalty,
+    }
+
+    # Add JSON mode if requested
+    if config.json_mode:
+        params["response_format"] = {"type": "json_object"}
+
+    # Add seed for reproducibility
+    if config.seed is not None:
+        params["seed"] = config.seed
+
+    # Stream or non-stream
+    if config.enable_streaming:
+        return await _stream_openai_style(client, params, on_chunk, on_thinking)
+    else:
+        response = client.chat.completions.create(**params)
+        return _parse_openai_response(response)
+
+
+async def _call_generic(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str,
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+) -> Dict[str, Any]:
+    """Generic OpenAI-compatible API call"""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
+
+    client = OpenAI(
+        base_url=config.provider_config.base_url,
+        api_key=config.provider_config.api_key,
+    )
+
+    # Build messages
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_message}
+    ]
+
+    # Build request parameters
+    params: Dict[str, Any] = {
+        "model": config.provider_config.model,
+        "messages": messages,
+        "temperature": config.temperature,
+        "max_tokens": config.max_tokens,
+    }
+
+    # Add JSON mode if requested
+    if config.json_mode:
+        params["response_format"] = {"type": "json_object"}
+
+    # Stream or non-stream
+    if config.enable_streaming:
+        return await _stream_openai_style(client, params, on_chunk, on_thinking)
+    else:
+        response = client.chat.completions.create(**params)
+        return _parse_openai_response(response)
+
+
+async def _stream_openai_style(
     client,
     params: Dict[str, Any],
     on_chunk: Optional[Callable[[str], None]],
     on_thinking: Optional[Callable[[str], None]],
 ) -> Dict[str, Any]:
-    """Stream OpenAI response"""
+    """Stream OpenAI-style response"""
     params["stream"] = True
     full_content = []
     full_reasoning = []
     usage_info = {}
-    model_name = params["model"]
+    model_name = params.get("model", "unknown")
 
     stream = client.chat.completions.create(**params)
 
@@ -232,11 +295,17 @@ async def _stream_openai(
         if chunk.choices:
             delta = chunk.choices[0].delta
 
-            # Handle reasoning content (for o1/o3 models)
+            # Handle reasoning content (for o1/o3 models and OpenRouter)
             if hasattr(delta, "reasoning_content") and delta.reasoning_content:
                 full_reasoning.append(delta.reasoning_content)
                 if on_thinking:
                     on_thinking(delta.reasoning_content)
+
+            # Handle reasoning field (OpenRouter format)
+            if hasattr(delta, "reasoning") and delta.reasoning:
+                full_reasoning.append(delta.reasoning)
+                if on_thinking:
+                    on_thinking(delta.reasoning)
 
             # Handle regular content
             if hasattr(delta, "content") and delta.content:
@@ -247,8 +316,8 @@ async def _stream_openai(
         # Capture usage if available
         if hasattr(chunk, "usage") and chunk.usage:
             usage_info = {
-                "input_tokens": chunk.usage.prompt_tokens,
-                "output_tokens": chunk.usage.completion_tokens,
+                "input_tokens": getattr(chunk.usage, "prompt_tokens", 0),
+                "output_tokens": getattr(chunk.usage, "completion_tokens", 0),
             }
 
     return {
@@ -260,62 +329,27 @@ async def _stream_openai(
 
 
 def _parse_openai_response(response) -> Dict[str, Any]:
-    """Parse non-streaming OpenAI response"""
+    """Parse non-streaming OpenAI-style response"""
     message = response.choices[0].message
+
+    # Extract reasoning/thinking from various possible fields
+    thinking = None
+    if hasattr(message, "reasoning_content") and message.reasoning_content:
+        thinking = message.reasoning_content
+    elif hasattr(message, "reasoning") and message.reasoning:
+        thinking = message.reasoning
+    elif hasattr(message, "reasoning_details") and message.reasoning_details:
+        # OpenRouter format with reasoning_details
+        thinking = str(message.reasoning_details)
 
     return {
         "content": message.content or "",
-        "thinking": message.reasoning_content if hasattr(message, "reasoning_content") else None,
+        "thinking": thinking,
         "usage": {
-            "input_tokens": response.usage.prompt_tokens,
-            "output_tokens": response.usage.completion_tokens,
+            "input_tokens": getattr(response.usage, "prompt_tokens", 0),
+            "output_tokens": getattr(response.usage, "completion_tokens", 0),
         },
         "model": response.model,
-    }
-
-
-async def _call_generic(
-    prompt: str,
-    config: LLMConfig,
-    user_message: str,
-    on_chunk: Optional[Callable[[str], None]],
-) -> Dict[str, Any]:
-    """Generic OpenAI-compatible API call (fallback)"""
-    # This is a synchronous fallback using requests
-    # In a real async context, you'd use httpx
-
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": config.model_name,
-        "messages": [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": user_message}
-        ],
-        "temperature": config.temperature,
-        "max_tokens": config.max_tokens,
-    }
-
-    if config.json_mode:
-        payload["response_format"] = {"type": "json_object"}
-
-    response = requests.post(url, headers=headers, json=payload, timeout=120)
-    response.raise_for_status()
-
-    data = response.json()
-    content = data["choices"][0]["message"]["content"]
-
-    if on_chunk:
-        on_chunk(content)
-
-    return {
-        "content": content,
-        "thinking": None,
-        "usage": data.get("usage", {}),
-        "model": data.get("model", config.model_name),
     }
 
 
