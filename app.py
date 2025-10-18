@@ -1584,27 +1584,10 @@ with tabs[9]:
     schedule_mgr = st.session_state.schedule_manager
     all_entries = schedule_mgr.get_all_entries()
 
-    # DEBUG: Check what's in the manager
-    st.write(f"🔍 DEBUG Preview Tab - Uploaded entries: {len(schedule_mgr.state.uploaded_entries)}")
-    st.write(f"🔍 DEBUG Preview Tab - Generated entries: {len(schedule_mgr.state.generated_entries)}")
-    st.write(f"🔍 DEBUG Preview Tab - Total entries: {len(all_entries)}")
+    # Log debug info silently (moved to bottom for display)
     log_debug_event(
         f"Preview tab opened: uploaded={len(schedule_mgr.state.uploaded_entries)}, generated={len(schedule_mgr.state.generated_entries)}"
     )
-
-    if schedule_mgr.state.generated_entries:
-        st.write(f"🔍 DEBUG Preview Tab - First generated entry: {schedule_mgr.state.generated_entries[0].employee_name}, {schedule_mgr.state.generated_entries[0].start_date}")
-
-    with st.expander("🛠 Debug Event Log", expanded=False):
-        if st.session_state.debug_events:
-            for entry in reversed(st.session_state.debug_events[-30:]):
-                st.write(entry)
-        else:
-            st.write("No debug events recorded yet.")
-
-    if st.session_state.last_generated_payload:
-        with st.expander("🧾 Last Generated Payload", expanded=False):
-            st.json(st.session_state.last_generated_payload)
 
     # Control Panel
     col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
@@ -1883,6 +1866,35 @@ with tabs[9]:
                     st.warning("Could not parse dates from schedule entries")
             except Exception as e:
                 st.error(f"Error rendering calendar: {e}")
+
+        # DEBUG SECTION - Moved to bottom
+        st.markdown("---")
+        st.markdown("### 🔍 Debug Information")
+
+        # Summary metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Uploaded Entries", len(schedule_mgr.state.uploaded_entries))
+        with col2:
+            st.metric("Generated Entries", len(schedule_mgr.state.generated_entries))
+        with col3:
+            st.metric("Total Entries", len(all_entries))
+        with col4:
+            if schedule_mgr.state.generated_entries:
+                first_entry = schedule_mgr.state.generated_entries[0]
+                st.caption(f"First Generated:\n{first_entry.employee_name}, {first_entry.start_date}")
+
+        # Expandable debug sections
+        with st.expander("🛠 Debug Event Log", expanded=False):
+            if st.session_state.debug_events:
+                for entry in reversed(st.session_state.debug_events[-30:]):
+                    st.write(entry)
+            else:
+                st.write("No debug events recorded yet.")
+
+        if st.session_state.last_generated_payload:
+            with st.expander("🧾 Last Generated Payload", expanded=False):
+                st.json(st.session_state.last_generated_payload)
 
 # ---------------------------------------------------------
 # TAB 11: Export
