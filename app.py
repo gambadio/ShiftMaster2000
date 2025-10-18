@@ -1487,21 +1487,31 @@ with tabs[8]:
                     # Try to parse and convert to entries
                     try:
                         schedule_json = json.loads(result["content"])
+                        st.write(f"🔍 DEBUG: Parsed JSON with {len(schedule_json.get('shifts', []))} shifts and {len(schedule_json.get('time_off', []))} time-off entries")
+
                         entries, notes = parse_llm_schedule_output(schedule_json)
+                        st.write(f"🔍 DEBUG: parse_llm_schedule_output returned {len(entries)} entries")
+
+                        if entries:
+                            st.write(f"🔍 DEBUG: First entry - Employee: {entries[0].employee_name}, Date: {entries[0].start_date}")
+
+                        # Check state before adding
+                        before_count = len(st.session_state.schedule_manager.state.generated_entries)
+                        st.write(f"🔍 DEBUG: Generated entries BEFORE adding: {before_count}")
 
                         # Add to schedule manager
                         st.session_state.schedule_manager.add_generated_entries(entries)
 
+                        # Check state after adding
+                        after_count = len(st.session_state.schedule_manager.state.generated_entries)
+                        st.write(f"🔍 DEBUG: Generated entries AFTER adding: {after_count}")
+
                         # Also keep in session state for backward compatibility
                         st.session_state.generated_entries = entries
 
-                        # Display info with conflict count
-                        conflicts = st.session_state.schedule_manager.state.conflicts
-                        conflict_count = len([c for c in conflicts if c.severity == "error"])
-                        if conflict_count > 0:
-                            st.warning(f"✅ Parsed {len(entries)} schedule entries - ⚠️ {conflict_count} conflicts detected")
-                        else:
-                            st.success(f"✅ Parsed {len(entries)} schedule entries - No conflicts detected")
+                        # Display success
+                        st.success(f"✅ Successfully parsed and added {len(entries)} schedule entries!")
+                        st.info("📅 Navigate to the **Preview** tab to see the calendar")
 
                         if notes:
                             with st.expander("📝 Generation Notes"):
@@ -1533,6 +1543,14 @@ with tabs[9]:
     # Schedule Management Controls
     schedule_mgr = st.session_state.schedule_manager
     all_entries = schedule_mgr.get_all_entries()
+
+    # DEBUG: Check what's in the manager
+    st.write(f"🔍 DEBUG Preview Tab - Uploaded entries: {len(schedule_mgr.state.uploaded_entries)}")
+    st.write(f"🔍 DEBUG Preview Tab - Generated entries: {len(schedule_mgr.state.generated_entries)}")
+    st.write(f"🔍 DEBUG Preview Tab - Total entries: {len(all_entries)}")
+
+    if schedule_mgr.state.generated_entries:
+        st.write(f"🔍 DEBUG Preview Tab - First generated entry: {schedule_mgr.state.generated_entries[0].employee_name}, {schedule_mgr.state.generated_entries[0].start_date}")
 
     # Control Panel
     col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
