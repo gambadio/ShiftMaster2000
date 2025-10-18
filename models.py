@@ -87,6 +87,7 @@ class ScheduleEntry(BaseModel):
     shared: Optional[str] = "1. Geteilt"
     entry_type: str = "shift"  # "shift" or "time_off"
     reason: Optional[str] = None  # For time-off entries (Grund für arbeitsfreie Zeit)
+    source: str = "uploaded"  # "generated" or "uploaded"
 
 class PlanningPeriod(BaseModel):
     """Date range for schedule generation"""

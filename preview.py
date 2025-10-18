@@ -212,20 +212,25 @@ def render_calendar_preview(
         }
         .shift-block.generated {
             border-color: rgba(255, 255, 255, 0.5);
-            box-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+            box-shadow:
+                0 0 4px rgba(255, 255, 255, 0.3),
+                0 0 8px rgba(255, 255, 255, 0.2),
+                inset 0 0 6px rgba(255, 255, 255, 0.08);
+            animation: glow-pulse 2s ease-in-out infinite;
         }
-        .shift-block.generated::after {
-            content: "LLM";
-            position: absolute;
-            top: -10px;
-            right: 4px;
-            font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 0.4px;
-            padding: 1px 4px;
-            border-radius: 4px;
-            background: rgba(0, 0, 0, 0.35);
-            color: #ffffff;
+        @keyframes glow-pulse {
+            0%, 100% {
+                box-shadow:
+                    0 0 4px rgba(255, 255, 255, 0.3),
+                    0 0 8px rgba(255, 255, 255, 0.2),
+                    inset 0 0 6px rgba(255, 255, 255, 0.08);
+            }
+            50% {
+                box-shadow:
+                    0 0 6px rgba(255, 255, 255, 0.35),
+                    0 0 10px rgba(255, 255, 255, 0.25),
+                    inset 0 0 8px rgba(255, 255, 255, 0.1);
+            }
         }
         .shift-label {
             font-weight: 600;

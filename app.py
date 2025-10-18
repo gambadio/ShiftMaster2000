@@ -1784,7 +1784,8 @@ with tabs[9]:
                                 notes=getattr(e, 'notes', None),
                                 shared=getattr(e, 'shared', "1. Geteilt"),
                                 entry_type=e.entry_type,
-                                reason=getattr(e, 'reason', None)
+                                reason=getattr(e, 'reason', None),
+                                source=getattr(e, 'source', 'uploaded')
                             ))
 
                     # Render calendar
