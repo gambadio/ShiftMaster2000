@@ -1533,10 +1533,9 @@ with tabs[9]:
     # Schedule Management Controls
     schedule_mgr = st.session_state.schedule_manager
     all_entries = schedule_mgr.get_all_entries()
-    conflicts = schedule_mgr.state.conflicts
 
     # Control Panel
-    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
 
     with col1:
         if st.button("🗑️ Clear Generated", help="Remove all generated schedule entries"):
@@ -1561,17 +1560,6 @@ with tabs[9]:
         if len(all_entries) > 0:
             if st.button("📥 Export to Excel", help="Export schedule to Teams-compatible Excel file"):
                 st.session_state.show_export_dialog = True
-
-    with col5:
-        # Conflict indicator
-        error_conflicts = [c for c in conflicts if c.severity == "error"]
-        warning_conflicts = [c for c in conflicts if c.severity == "warning"]
-        if error_conflicts:
-            st.error(f"⚠️ {len(error_conflicts)} errors")
-        elif warning_conflicts:
-            st.warning(f"⚠️ {len(warning_conflicts)} warnings")
-        else:
-            st.success("✅ No conflicts")
 
     # Excel Export Dialog
     if st.session_state.get("show_export_dialog", False):
@@ -1648,10 +1636,10 @@ with tabs[9]:
 
         st.markdown("---")
 
-        # Unified Calendar View
-        if all_entries:
-            st.markdown("### 📅 Calendar View")
+        # Calendar View
+        st.markdown("### 📅 Calendar View")
 
+        if all_entries:
             # Date range selection for calendar
             try:
                 dates = []
@@ -1670,30 +1658,39 @@ with tabs[9]:
                     min_date = min(dates)
                     max_date = max(dates)
 
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        cal_start = st.date_input("Calendar Start", value=min_date, key="cal_start")
-                    with col2:
-                        cal_end = st.date_input("Calendar End", value=max_date, key="cal_end")
+                    # Convert to ScheduleEntry objects for visualization
+                    from models import ScheduleEntry
 
-                    # Filter entries for calendar view
-                    filtered_entries = [
-                        e for e in all_entries
-                        if cal_start <= pd.to_datetime(e.start_date, errors='coerce').date() <= cal_end
-                    ]
+                    schedule_entries = []
+                    for e in all_entries:
+                        if isinstance(e, ScheduleEntry):
+                            schedule_entries.append(e)
+                        else:
+                            # Convert GeneratedScheduleEntry to ScheduleEntry
+                            schedule_entries.append(ScheduleEntry(
+                                employee_name=e.employee_name,
+                                employee_email=getattr(e, 'employee_email', None),
+                                group=getattr(e, 'group', None),
+                                start_date=e.start_date,
+                                start_time=getattr(e, 'start_time', None),
+                                end_date=getattr(e, 'end_date', e.start_date),
+                                end_time=getattr(e, 'end_time', None),
+                                color_code=getattr(e, 'color_code', None),
+                                label=getattr(e, 'label', None),
+                                unpaid_break=getattr(e, 'unpaid_break', None),
+                                notes=getattr(e, 'notes', None),
+                                shared=getattr(e, 'shared', "1. Geteilt"),
+                                entry_type=e.entry_type,
+                                reason=getattr(e, 'reason', None)
+                            ))
 
                     # Render calendar
                     render_calendar_preview(
-                        filtered_entries,
-                        cal_start,
-                        cal_end,
-                        title=f"Schedule Calendar ({cal_start} to {cal_end})"
+                        schedule_entries,
+                        min_date,
+                        max_date,
+                        title="Schedule Calendar"
                     )
-
-                    # Display conflicts below calendar
-                    if conflicts:
-                        st.markdown("### ⚠️ Detected Conflicts")
-                        render_conflicts(conflicts)
 
                     # Entry Editor
                     with st.expander("✏️ Edit Schedule Entries", expanded=False):
@@ -1811,142 +1808,27 @@ with tabs[9]:
             except Exception as e:
                 st.error(f"Error rendering calendar: {e}")
 
-        st.markdown("---")
-        # Tabs for switching between imported and generated views
-        preview_tabs = []
-        if has_imported:
-            preview_tabs.append(get_text("imported_schedule", lang))
-        if has_generated:
-            preview_tabs.append(get_text("generated_sched", lang))
-
-        if len(preview_tabs) > 1:
-            preview_subtabs = st.tabs(preview_tabs)
-        else:
-            preview_subtabs = [st.container()]
-
-        # IMPORTED SCHEDULE PREVIEW
-        if has_imported:
-            tab_idx = 0
-            with preview_subtabs[tab_idx]:
-                st.markdown(f"### {get_text('imported_teams', lang)}")
-
-                payload = st.session_state.schedule_payload
-                past_entries = payload.get("past_entries", [])
-                future_entries = payload.get("future_entries", [])
-
-                # Statistics
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric(get_text("total_past", lang), len(past_entries))
-                with col2:
-                    future_shifts = sum(1 for e in future_entries if e.get("entry_type") == "shift")
-                    st.metric(get_text("future_shifts", lang), future_shifts)
-                with col3:
-                    future_timeoff = sum(1 for e in future_entries if e.get("entry_type") == "time_off")
-                    st.metric(get_text("future_timeoff", lang), future_timeoff)
-                with col4:
-                    unique_emps = len(set(e.get("employee") or "Unknown" for e in past_entries + future_entries))
-                    st.metric(get_text("unique_employees", lang), unique_emps)
-
-                st.markdown("---")
-
-                # Convert to ScheduleEntry objects for visualization
-                from models import ScheduleEntry
-
-                def _convert_to_entry(raw: Dict[str, Any]) -> ScheduleEntry:
-                    """Convert raw dict to ScheduleEntry"""
-                    return ScheduleEntry(
-                        employee_name=raw.get("employee", "Unknown"),
-                        employee_email=raw.get("email"),
-                        group=raw.get("group"),
-                        start_date=raw.get("start_date", raw.get("date", "")),
-                        start_time=raw.get("start_time"),
-                        end_date=raw.get("end_date", raw.get("date", "")),
-                        end_time=raw.get("end_time"),
-                        color_code=raw.get("color_code"),
-                        label=raw.get("label"),
-                        unpaid_break=raw.get("unpaid_break"),
-                        notes=raw.get("notes"),
-                        shared=raw.get("shared", "1. Geteilt"),
-                        entry_type=raw.get("entry_type", "shift"),
-                        reason=raw.get("reason")
-                    )
-
-                all_entries = [_convert_to_entry(e) for e in past_entries + future_entries]
-
-                # Determine date range from data
-                if all_entries:
-                    dates = [pd.to_datetime(e.start_date).date() for e in all_entries]
-                    min_date = min(dates)
-                    max_date = max(dates)
-
-                    # Calendar view
-                    st.markdown(f"### {get_text('calendar_view', lang)}")
-                    render_calendar_preview(
-                        all_entries,
-                        min_date,
-                        max_date,
-                        title="Imported Schedule Calendar"
-                    )
-
-                st.markdown("---")
-
-                # Data tables
-                st.markdown(f"### {get_text('data_tables', lang)}")
-
-                # Past entries
-                if past_entries:
-                    with st.expander(f"⏮️ Past Entries ({len(past_entries)})"):
-                        past_df = pd.DataFrame(past_entries)
-                        display_cols = [c for c in ["employee", "start_date", "start_time", "end_time", "label", "entry_type"] if c in past_df.columns]
-                        st.dataframe(past_df[display_cols] if display_cols else past_df, use_container_width=True)
-
-                # Future entries
-                if future_entries:
-                    with st.expander(f"⏭️ Future Entries ({len(future_entries)})"):
-                        future_df = pd.DataFrame(future_entries)
-                        display_cols = [c for c in ["employee", "start_date", "start_time", "end_time", "label", "entry_type"] if c in future_df.columns]
-                        st.dataframe(future_df[display_cols] if display_cols else future_df, use_container_width=True)
-
-        # GENERATED SCHEDULE PREVIEW
-        if has_generated:
-            tab_idx = 1 if has_imported else 0
-            with preview_subtabs[tab_idx]:
-                st.markdown(f"### {get_text('ai_generated', lang)}")
-
-                entries = st.session_state.generated_entries
-
-                # Render statistics
-                render_statistics(entries)
-
-                st.markdown("---")
-
-                # Render conflicts
-                render_conflicts(entries)
-
-                st.markdown("---")
-
-                # Render calendar
-                if project.planning_period:
-                    render_calendar_preview(
-                        entries,
-                        project.planning_period.start_date,
-                        project.planning_period.end_date,
-                        title="Generated Schedule Calendar"
-                    )
-
 # ---------------------------------------------------------
 # TAB 11: Export
 # ---------------------------------------------------------
 with tabs[10]:
     st.subheader(get_text("export_teams", lang))
 
-    if not st.session_state.generated_entries:
-        st.info("Generate a schedule first to export")
-    else:
-        entries = st.session_state.generated_entries
+    # Get schedule manager and all entries (uploaded + generated)
+    schedule_mgr = st.session_state.schedule_manager
+    all_entries = schedule_mgr.get_all_entries()
 
-        st.write(f"**Ready to export {len(entries)} schedule entries**")
+    if not all_entries:
+        st.info("Import a Teams schedule or generate a new schedule to export")
+    else:
+        # Show breakdown
+        uploaded_count = len(schedule_mgr.state.uploaded_entries)
+        generated_count = len(schedule_mgr.state.generated_entries)
+
+        st.write(f"**Ready to export {len(all_entries)} schedule entries**")
+        st.caption(f"📥 Uploaded: {uploaded_count} | 🤖 Generated: {generated_count}")
+
+        entries = all_entries
 
         # Export mode selection
         export_mode = st.radio(

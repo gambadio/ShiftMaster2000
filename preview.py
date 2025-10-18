@@ -10,7 +10,7 @@ from datetime import datetime, date, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-from models import ScheduleEntry, TEAMS_COLOR_NAMES
+from models import ScheduleEntry, ScheduleConflict, TEAMS_COLOR_NAMES
 
 
 def render_calendar_preview(
@@ -53,15 +53,9 @@ def render_calendar_preview(
             st.rerun()
 
     with col3:
-        if st.button("📅 Go to Latest", key=f"today_{title}"):
-            # Find the latest date with entries, or use today
-            latest_entry_date = max(
-                (datetime.fromisoformat(e.start_date).date() for e in schedule_entries),
-                default=date.today()
-            )
-
-            # Use the latest entry date if it exists and is >= today, otherwise use today
-            target_date = max(latest_entry_date, date.today())
+        if st.button("📅 Go to Today", key=f"today_{title}"):
+            # Navigate to the week containing today
+            target_date = date.today()
 
             # Align target to the Monday of its week
             days_since_monday = target_date.weekday()
@@ -69,13 +63,11 @@ def render_calendar_preview(
 
             # Calculate weeks from start_date to target week
             days_diff = (week_start - start_date).days
-            st.session_state[view_key] = max(0, days_diff // 7)
+            st.session_state[view_key] = days_diff // 7
             st.rerun()
 
-    with col4:
-        st.caption(f"Viewing Week {st.session_state[view_key] + 1}")
-
     # Calculate view window (7 days, Monday-Sunday)
+    # Indefinite navigation - no boundary restrictions
     days_per_view = 7
     offset_start = start_date + timedelta(days=st.session_state[view_key] * days_per_view)
 
@@ -84,22 +76,10 @@ def render_calendar_preview(
     view_start = offset_start - timedelta(days=days_since_monday)
     view_end = view_start + timedelta(days=6)  # Always show full week (Mon-Sun)
 
-    # Ensure we don't go before start_date
-    if view_start < start_date:
-        view_start = start_date
-        # Realign to Monday
-        days_since_monday = view_start.weekday()
-        view_start = view_start - timedelta(days=days_since_monday)
-        st.session_state[view_key] = 0
-
-    if view_start > end_date:
-        # Go to the last full week
-        view_start = end_date - timedelta(days=end_date.weekday() + 6)
-        if view_start < start_date:
-            view_start = start_date - timedelta(days=start_date.weekday())
-        st.session_state[view_key] = max(0, (view_start - start_date).days // days_per_view)
-
-    view_end = view_start + timedelta(days=6)
+    with col4:
+        # Show current week's date range instead of week number
+        # since navigation is now indefinite
+        st.caption(f"{view_start.strftime('%b %d')} - {view_end.strftime('%b %d, %Y')}")
 
     # Generate date range for current view (always 7 days)
     dates = [view_start + timedelta(days=i) for i in range(7)]
@@ -372,8 +352,69 @@ def render_statistics(schedule_entries: List[ScheduleEntry]):
         st.metric("Days Covered", unique_dates)
 
 
+def render_schedule_conflicts(conflicts: List[ScheduleConflict]):
+    """
+    Render ScheduleConflict objects from the schedule manager
+
+    Args:
+        conflicts: List of ScheduleConflict objects to display
+    """
+    if not conflicts:
+        st.success("✅ No conflicts detected")
+        return
+
+    # Count by severity
+    error_count = sum(1 for c in conflicts if c.severity == "error")
+    warning_count = sum(1 for c in conflicts if c.severity == "warning")
+    info_count = sum(1 for c in conflicts if c.severity == "info")
+
+    # Show summary
+    severity_icon = {
+        "error": "🔴",
+        "warning": "⚠️",
+        "info": "ℹ️"
+    }
+
+    summary_parts = []
+    if error_count:
+        summary_parts.append(f"🔴 {error_count} errors")
+    if warning_count:
+        summary_parts.append(f"⚠️ {warning_count} warnings")
+    if info_count:
+        summary_parts.append(f"ℹ️ {info_count} info")
+
+    st.markdown(f"**{len(conflicts)} conflicts detected:** {', '.join(summary_parts)}")
+
+    with st.expander("📋 View All Conflicts", expanded=True):
+        for i, conflict in enumerate(conflicts, 1):
+            icon = severity_icon.get(conflict.severity, "•")
+
+            # Build conflict display
+            col1, col2 = st.columns([0.1, 0.9])
+            with col1:
+                st.markdown(f"### {icon}")
+            with col2:
+                st.markdown(f"**{conflict.conflict_type.value.replace('_', ' ').title()}**")
+                st.markdown(f"{conflict.message}")
+
+                # Show additional context if available
+                context_parts = []
+                if conflict.employee_name:
+                    context_parts.append(f"👤 {conflict.employee_name}")
+                if conflict.date:
+                    context_parts.append(f"📅 {conflict.date}")
+                if conflict.shift_role:
+                    context_parts.append(f"🏷️ {conflict.shift_role}")
+
+                if context_parts:
+                    st.caption(" | ".join(context_parts))
+
+            if i < len(conflicts):
+                st.divider()
+
+
 def render_conflicts(schedule_entries: List[ScheduleEntry]):
-    """Detect and display potential conflicts"""
+    """Detect and display potential conflicts from ScheduleEntry objects"""
     conflicts = _detect_conflicts(schedule_entries)
 
     if conflicts:

@@ -1201,13 +1201,14 @@ def _payload_entry_to_schedule_entry(payload_entry: Dict[str, Any], source: str 
         entry_type = payload_entry.get("entry_type", "shift")
         
         # Build entry data
+        # Use correct field names from payload (employee, email) not (employee_name, employee_email)
         entry_data = {
-            "employee_name": payload_entry.get("employee_name", ""),
-            "employee_email": payload_entry.get("employee_email"),
+            "employee_name": payload_entry.get("employee", payload_entry.get("employee_name", "Unknown")),
+            "employee_email": payload_entry.get("email", payload_entry.get("employee_email")),
             "group": payload_entry.get("group"),
-            "start_date": payload_entry.get("start_date", ""),
+            "start_date": payload_entry.get("start_date", payload_entry.get("date", "")),
             "start_time": payload_entry.get("start_time", "00:00"),
-            "end_date": payload_entry.get("end_date", payload_entry.get("start_date", "")),
+            "end_date": payload_entry.get("end_date", payload_entry.get("date", payload_entry.get("start_date", ""))),
             "end_time": payload_entry.get("end_time", "00:00"),
             "color_code": payload_entry.get("color_code", "1. Weiß"),
             "label": payload_entry.get("label"),

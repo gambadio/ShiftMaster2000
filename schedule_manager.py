@@ -39,8 +39,8 @@ class ScheduleManager:
         self.state.generated_entries.extend(entries)
         self.state.last_generated = datetime.now().isoformat()
 
-        # Detect conflicts
-        self.detect_all_conflicts()
+        # Detect conflicts - TEMPORARILY DISABLED
+        # self.detect_all_conflicts()
 
     def add_uploaded_entries(self, entries: List[GeneratedScheduleEntry], members: List[Dict[str, str]] = None) -> None:
         """Add uploaded entries from Excel file"""
@@ -55,8 +55,8 @@ class ScheduleManager:
         if members:
             self.state.uploaded_members = members
 
-        # Detect conflicts
-        self.detect_all_conflicts()
+        # Detect conflicts - TEMPORARILY DISABLED
+        # self.detect_all_conflicts()
 
     def get_all_entries(self) -> List[GeneratedScheduleEntry]:
         """Get all entries (uploaded + generated)"""
