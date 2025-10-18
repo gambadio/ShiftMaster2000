@@ -130,6 +130,10 @@ if "debug_events" not in st.session_state:
     st.session_state.debug_events = []
 if "last_generated_payload" not in st.session_state:
     st.session_state.last_generated_payload = None
+if "last_parse_errors" not in st.session_state:
+    st.session_state.last_parse_errors = []
+if "last_generation_notes" not in st.session_state:
+    st.session_state.last_generation_notes = None
 
 
 def log_debug_event(message: str) -> None:
@@ -1465,9 +1469,46 @@ with tabs[8]:
     else:
         st.success(f"✅ Ready to generate schedule for {len(project.employees)} employees, {len(project.shifts)} shift types")
 
+        def display_generation_result(result: Dict[str, Any], parse_errors: Optional[List[str]] = None, notes: Optional[str] = None) -> None:
+            """Render the stored generation output with optional diagnostics."""
+            if not result:
+                return
+
+            header_col, action_col = st.columns([6, 1])
+            with action_col:
+                if st.button("🧹 Clear Output", key="clear_generation_output"):
+                    st.session_state.generated_schedule = None
+                    st.session_state.last_parse_errors = []
+                    st.session_state.last_generation_notes = None
+                    st.session_state.last_generated_payload = None
+                    log_debug_event("Generate tab output cleared")
+                    st.rerun()
+
+            with header_col:
+                st.markdown(f"### {get_text('generated_schedule', lang)}")
+
+            if result.get("thinking"):
+                with st.expander("🧠 Reasoning / Thinking", expanded=False):
+                    st.text(result["thinking"])
+
+            st.code(result.get("content", ""), language="json")
+
+            if parse_errors:
+                st.warning("⚠️ Some entries could not be parsed. See details below.")
+                with st.expander("Parsing issues", expanded=False):
+                    for err in parse_errors:
+                        st.write(f"- {err}")
+
+            if notes:
+                with st.expander("📝 Generation Notes", expanded=False):
+                    st.text(notes)
+
+        output_container = st.container()
+        generated_now = False
+
         if st.button(get_text("generate_button", lang), type="primary"):
+            generated_now = True
             with st.spinner("Generating schedule..."):
-                # Build prompt
                 planning_tuple = (
                     project.planning_period.start_date.isoformat(),
                     project.planning_period.end_date.isoformat()
@@ -1482,97 +1523,92 @@ with tabs[8]:
                     planning_period=planning_tuple
                 )
 
-                # Add MCP tools if configured
                 if project.llm_config.mcp_servers:
                     mcp_tools_section = format_mcp_tools_for_prompt(project.llm_config.mcp_servers)
                     prompt += "\n\n" + mcp_tools_section
 
                 try:
-                    # Call LLM
                     result = call_llm_sync(prompt, project.llm_config, "Produce the schedule now.")
-
                     st.session_state.generated_schedule = result
-                    st.success("✅ Schedule generated!")
 
-                    # Display results
-                    if result.get("thinking"):
-                        with st.expander("🧠 Reasoning / Thinking"):
-                            st.text(result["thinking"])
+                    with output_container:
+                        st.success("✅ Schedule generated!")
 
-                    st.markdown(f"### {get_text('generated_schedule', lang)}")
-                    st.code(result["content"], language="json")
+                        parse_errors: List[str] = []
+                        notes: Optional[str] = None
+                        try:
+                            schedule_json = parse_json_response(result["content"])
+                            num_shifts = len(schedule_json.get("shifts", []))
+                            num_time_off = len(schedule_json.get("time_off", []))
+                            log_debug_event(f"Parsed LLM JSON: {num_shifts} shifts, {num_time_off} time-off")
 
-                    # Try to parse and convert to entries
-                    try:
-                        schedule_json = parse_json_response(result["content"])
-                        num_shifts = len(schedule_json.get("shifts", []))
-                        num_time_off = len(schedule_json.get("time_off", []))
-                        st.write(f"🔍 DEBUG: Parsed JSON with {num_shifts} shifts and {num_time_off} time-off entries")
-                        log_debug_event(f"Parsed LLM JSON: {num_shifts} shifts, {num_time_off} time-off")
+                            entries, notes, parse_errors = parse_llm_schedule_output(schedule_json)
+                            log_debug_event(f"Validated generated entries: {len(entries)} ok, {len(parse_errors)} errors")
 
-                        entries, notes, parse_errors = parse_llm_schedule_output(schedule_json)
-                        st.write(f"🔍 DEBUG: parse_llm_schedule_output returned {len(entries)} entries")
-                        log_debug_event(f"Validated generated entries: {len(entries)} ok, {len(parse_errors)} errors")
+                            st.session_state.last_generated_payload = schedule_json
+                            st.session_state.last_parse_errors = parse_errors
+                            st.session_state.last_generation_notes = notes
 
-                        if parse_errors:
-                            st.warning("⚠️ Some entries could not be parsed. See details below.")
-                            with st.expander("Parsing issues", expanded=False):
-                                for err in parse_errors:
-                                    st.write(f"- {err}")
-                            log_debug_event("Parsing issues surfaced to user")
+                            display_generation_result(result, parse_errors=parse_errors, notes=notes)
 
-                        if not entries:
-                            st.error("❌ LLM output decoded but produced zero valid schedule entries.")
-                            log_debug_event("No valid entries after parsing; aborting add")
-                            raise RuntimeError("No valid schedule entries produced")
+                            st.write(f"🔍 DEBUG: Parsed JSON with {num_shifts} shifts and {num_time_off} time-off entries")
+                            st.write(f"🔍 DEBUG: parse_llm_schedule_output returned {len(entries)} entries")
 
-                        if entries:
+                            if not entries:
+                                st.error("❌ LLM output decoded but produced zero valid schedule entries.")
+                                log_debug_event("No valid entries after parsing; aborting add")
+                                raise RuntimeError("No valid schedule entries produced")
+
                             st.write(f"🔍 DEBUG: First entry - Employee: {entries[0].employee_name}, Date: {entries[0].start_date}")
                             log_debug_event(f"Sample entry: {entries[0].employee_name} on {entries[0].start_date}")
 
-                        # Check state before adding
-                        before_count = len(st.session_state.schedule_manager.state.generated_entries)
-                        st.write(f"🔍 DEBUG: Generated entries BEFORE adding: {before_count}")
-                        log_debug_event(f"Generated entries before add: {before_count}")
+                            before_count = len(st.session_state.schedule_manager.state.generated_entries)
+                            st.write(f"🔍 DEBUG: Generated entries BEFORE adding: {before_count}")
+                            log_debug_event(f"Generated entries before add: {before_count}")
 
-                        # Add to schedule manager
-                        st.session_state.schedule_manager.add_generated_entries(entries)
-                        st.session_state.schedule_manager.state.generation_notes = notes
+                            st.session_state.schedule_manager.add_generated_entries(entries)
+                            st.session_state.schedule_manager.state.generation_notes = notes
 
-                        # Check state after adding
-                        after_count = len(st.session_state.schedule_manager.state.generated_entries)
-                        st.write(f"🔍 DEBUG: Generated entries AFTER adding: {after_count}")
-                        log_debug_event(f"Generated entries after add: {after_count}")
+                            after_count = len(st.session_state.schedule_manager.state.generated_entries)
+                            st.write(f"🔍 DEBUG: Generated entries AFTER adding: {after_count}")
+                            log_debug_event(f"Generated entries after add: {after_count}")
 
-                        # Also keep in session state for backward compatibility
-                        st.session_state.generated_entries = entries
-                        st.session_state.last_generated_payload = schedule_json
+                            st.session_state.generated_entries = entries
 
-                        # Display success
-                        st.success(f"✅ Successfully parsed and added {len(entries)} schedule entries!")
-                        st.info("📅 Navigate to the **Preview** tab to see the calendar")
-
-                        if notes:
-                            with st.expander("📝 Generation Notes"):
-                                st.text(notes)
-                    except Exception as e:
-                        log_debug_event(f"Schedule parsing failed: {e}")
-                        st.warning(f"Could not parse schedule entries: {e}")
-
-                    # Display usage
-                    if result.get("usage"):
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Input tokens", result["usage"].get("input_tokens", 0))
-                        with col2:
-                            st.metric("Output tokens", result["usage"].get("output_tokens", 0))
-                        with col3:
-                            total = result["usage"].get("input_tokens", 0) + result["usage"].get("output_tokens", 0)
-                            st.metric("Total tokens", total)
+                            st.success(f"✅ Successfully parsed and added {len(entries)} schedule entries!")
+                            st.info("📅 Navigate to the **Preview** tab to see the calendar")
+                        except Exception as e:
+                            st.session_state.last_parse_errors = parse_errors
+                            st.session_state.last_generation_notes = notes
+                            log_debug_event(f"Schedule parsing failed: {e}")
+                            st.warning(f"Could not parse schedule entries: {e}")
+                            display_generation_result(result, parse_errors=parse_errors, notes=notes)
+                        else:
+                            if parse_errors:
+                                log_debug_event("Parsing issues surfaced to user")
+                        finally:
+                            if result.get("usage"):
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Input tokens", result["usage"].get("input_tokens", 0))
+                                with col2:
+                                    st.metric("Output tokens", result["usage"].get("output_tokens", 0))
+                                with col3:
+                                    total = result["usage"].get("input_tokens", 0) + result["usage"].get("output_tokens", 0)
+                                    st.metric("Total tokens", total)
 
                 except Exception as e:
-                    st.error(f"Generation failed: {e}")
-                    st.exception(e)
+                    with output_container:
+                        st.error(f"Generation failed: {e}")
+                        st.exception(e)
+
+        if not generated_now and st.session_state.generated_schedule:
+            with output_container:
+                display_generation_result(
+                    st.session_state.generated_schedule,
+                    parse_errors=st.session_state.last_parse_errors,
+                    notes=st.session_state.last_generation_notes,
+                )
 
 # ---------------------------------------------------------
 # TAB 10: Preview
@@ -1584,10 +1620,18 @@ with tabs[9]:
     schedule_mgr = st.session_state.schedule_manager
     all_entries = schedule_mgr.get_all_entries()
 
-    # Log debug info silently (moved to bottom for display)
+    st.write(f"🔍 DEBUG Preview Tab - Uploaded entries: {len(schedule_mgr.state.uploaded_entries)}")
+    st.write(f"🔍 DEBUG Preview Tab - Generated entries: {len(schedule_mgr.state.generated_entries)}")
+    st.write(f"🔍 DEBUG Preview Tab - Total entries: {len(all_entries)}")
+
     log_debug_event(
         f"Preview tab opened: uploaded={len(schedule_mgr.state.uploaded_entries)}, generated={len(schedule_mgr.state.generated_entries)}"
     )
+
+    if schedule_mgr.state.generated_entries:
+        st.write(
+            f"🔍 DEBUG Preview Tab - First generated entry: {schedule_mgr.state.generated_entries[0].employee_name}, {schedule_mgr.state.generated_entries[0].start_date}"
+        )
 
     # Control Panel
     col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
