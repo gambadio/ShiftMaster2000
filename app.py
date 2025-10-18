@@ -657,6 +657,12 @@ with tabs[3]:
             help="Automatically analyze the schedule data to detect and create shift templates based on recurring patterns (time + role + color)"
         )
 
+        auto_import_employees = st.checkbox(
+            get_text("auto_import_employees", lang),
+            value=False,
+            help="Automatically add employees to the project using the Members sheet from the Teams export"
+        )
+
         teams_file = st.file_uploader(get_text("teams_file", lang), type=["xlsx","xls"], key="teams_multisheet_upload")
 
         if st.button(get_text("parse_populate", lang), key="parse_multisheet"):
@@ -699,7 +705,7 @@ with tabs[3]:
                     # Auto-populate employees from members data
                     employee_changes = None
                     needs_rerun = False
-                    if payload.get("members"):
+                    if auto_import_employees and payload.get("members"):
                         employee_changes = auto_populate_employees_from_members(
                             st.session_state.project,  # Use session_state.project directly
                             payload["members"]
