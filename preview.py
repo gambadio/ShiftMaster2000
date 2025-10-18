@@ -13,6 +13,20 @@ import pandas as pd
 from models import ScheduleEntry, ScheduleConflict, TEAMS_COLOR_NAMES
 
 
+def _parse_entry_date(date_str: Optional[str]) -> Optional[date]:
+    """Parse schedule date strings in ISO or M/D/Y formats."""
+    if not date_str:
+        return None
+
+    value = date_str.strip()
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 def render_calendar_preview(
     schedule_entries: List[ScheduleEntry],
     start_date: date,
@@ -97,8 +111,8 @@ def render_calendar_preview(
         grid_data[emp] = {d: [] for d in dates}
 
     for entry in schedule_entries:
-        entry_date = datetime.fromisoformat(entry.start_date).date()
-        if entry_date in grid_data.get(entry.employee_name, {}):
+        entry_date = _parse_entry_date(entry.start_date)
+        if entry_date and entry_date in grid_data.get(entry.employee_name, {}):
             grid_data[entry.employee_name][entry_date].append(entry)
 
     # Render as a dataframe with colored cells

@@ -421,29 +421,46 @@ class ScheduleManager:
         return dates
 
 
-def parse_llm_schedule_output(llm_output: Dict[str, Any]) -> Tuple[List[GeneratedScheduleEntry], str]:
-    """Parse LLM output into schedule entries"""
-    entries = []
+def parse_llm_schedule_output(llm_output: Dict[str, Any]) -> Tuple[List[GeneratedScheduleEntry], str, List[str]]:
+    """Parse LLM output into schedule entries.
+
+    Returns (entries, notes, errors) so the UI can surface detailed diagnostics.
+    """
+    entries: List[GeneratedScheduleEntry] = []
+    errors: List[str] = []
     notes = llm_output.get("notes", "") or llm_output.get("generation_notes", "")
 
     # Extract shifts
     shifts = llm_output.get("shifts", [])
-    for shift_data in shifts:
+    for idx, shift_data in enumerate(shifts):
         try:
-            entry = GeneratedScheduleEntry(**shift_data)
+            cleaned = _clean_generated_payload(shift_data)
+            entry = GeneratedScheduleEntry(**cleaned)
             entry.entry_type = "shift"
             entries.append(entry)
         except Exception as e:
-            print(f"Error parsing shift: {e}")
+            errors.append(f"Shift {idx + 1}: {e}")
 
     # Extract time-off if present
     time_offs = llm_output.get("time_off", [])
-    for time_off_data in time_offs:
+    for idx, time_off_data in enumerate(time_offs):
         try:
-            entry = GeneratedScheduleEntry(**time_off_data)
+            cleaned = _clean_generated_payload(time_off_data)
+            entry = GeneratedScheduleEntry(**cleaned)
             entry.entry_type = "time_off"
             entries.append(entry)
         except Exception as e:
-            print(f"Error parsing time-off: {e}")
+            errors.append(f"Time-off {idx + 1}: {e}")
 
-    return entries, notes
+    return entries, notes, errors
+
+
+def _clean_generated_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Light normalization (strip whitespace) for raw LLM payload dicts."""
+    cleaned: Dict[str, Any] = {}
+    for key, value in payload.items():
+        if isinstance(value, str):
+            cleaned[key] = value.strip()
+        else:
+            cleaned[key] = value
+    return cleaned

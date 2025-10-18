@@ -7,6 +7,40 @@ import pandas as pd
 from models import Project
 from prompt_templates import build_system_prompt
 
+
+def parse_json_response(content: str) -> Dict[str, Any]:
+    """Extract JSON payloads from LLM responses that may include code fences."""
+    if content is None:
+        raise ValueError("No content to parse")
+
+    candidate = content.strip()
+
+    # Strip markdown code fences like ```json ... ```
+    if candidate.startswith("```"):
+        lines = candidate.splitlines()
+        if lines:
+            # Drop opening fence
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        candidate = "\n".join(lines).strip()
+
+    # Attempt direct parse first
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+
+    # Fallback: slice between outermost braces
+    start = candidate.find("{")
+    end = candidate.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        snippet = candidate[start : end + 1]
+        return json.loads(snippet)
+
+    # If still failing, bubble up original error for visibility
+    raise json.JSONDecodeError("Invalid JSON content", candidate, 0)
+
 # ----------------------------
 # JSON serialization helpers
 # ----------------------------
@@ -1224,4 +1258,3 @@ def _payload_entry_to_schedule_entry(payload_entry: Dict[str, Any], source: str 
     except Exception as e:
         print(f"Error converting payload entry: {e}")
         return None
-

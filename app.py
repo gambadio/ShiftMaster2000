@@ -20,7 +20,8 @@ from models import (
 from utils import (
     save_project, save_complete_state, load_project_dict, load_complete_state,
     compile_prompt, parse_schedule_to_payload, parse_dual_schedule_files,
-    convert_uploaded_entries_to_schedule_entries, export_schedule_to_teams_excel
+    convert_uploaded_entries_to_schedule_entries, export_schedule_to_teams_excel,
+    parse_json_response
 )
 from schedule_manager import ScheduleManager, parse_llm_schedule_output
 from llm_client import create_llm_client, validate_provider_config
@@ -125,6 +126,20 @@ if "language" not in st.session_state:
     st.session_state.language = "en"
 if "autosave_checked" not in st.session_state:
     st.session_state.autosave_checked = False
+if "debug_events" not in st.session_state:
+    st.session_state.debug_events = []
+if "last_generated_payload" not in st.session_state:
+    st.session_state.last_generated_payload = None
+
+
+def log_debug_event(message: str) -> None:
+    """Append a timestamped debug message to session state."""
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    entry = f"[{timestamp}] {message}"
+    st.session_state.debug_events.append(entry)
+    # Keep last 100 entries to avoid unbounded growth
+    if len(st.session_state.debug_events) > 100:
+        st.session_state.debug_events = st.session_state.debug_events[-100:]
 
 # Check for autosave file on first load
 if not st.session_state.autosave_checked and os.path.exists(".autosave.json"):
@@ -241,9 +256,11 @@ with st.sidebar:
                 )
                 entries_count = len(st.session_state.schedule_manager.get_all_entries())
                 st.success(f"✅ Complete state saved to {dl_name} ({entries_count} schedule entries)")
+                log_debug_event(f"State saved to {dl_name}: entries={entries_count}")
             else:
                 save_project(dl_name, project)
                 st.success(f"✅ Project config saved to {dl_name}")
+                log_debug_event(f"Project-only save to {dl_name}")
 
             with open(dl_name, "rb") as f:
                 st.download_button(get_text("download", lang), data=f.read(), file_name=dl_name, mime="application/json")
@@ -278,6 +295,7 @@ with st.sidebar:
                     schedule_manager_state=st.session_state.schedule_manager.state
                 )
                 st.success("✅ Auto-saved")
+                log_debug_event("Manual autosave written to .autosave.json")
             except Exception as e:
                 st.error(f"Auto-save failed: {e}")
 
@@ -1486,28 +1504,49 @@ with tabs[8]:
 
                     # Try to parse and convert to entries
                     try:
-                        schedule_json = json.loads(result["content"])
-                        st.write(f"🔍 DEBUG: Parsed JSON with {len(schedule_json.get('shifts', []))} shifts and {len(schedule_json.get('time_off', []))} time-off entries")
+                        schedule_json = parse_json_response(result["content"])
+                        num_shifts = len(schedule_json.get("shifts", []))
+                        num_time_off = len(schedule_json.get("time_off", []))
+                        st.write(f"🔍 DEBUG: Parsed JSON with {num_shifts} shifts and {num_time_off} time-off entries")
+                        log_debug_event(f"Parsed LLM JSON: {num_shifts} shifts, {num_time_off} time-off")
 
-                        entries, notes = parse_llm_schedule_output(schedule_json)
+                        entries, notes, parse_errors = parse_llm_schedule_output(schedule_json)
                         st.write(f"🔍 DEBUG: parse_llm_schedule_output returned {len(entries)} entries")
+                        log_debug_event(f"Validated generated entries: {len(entries)} ok, {len(parse_errors)} errors")
+
+                        if parse_errors:
+                            st.warning("⚠️ Some entries could not be parsed. See details below.")
+                            with st.expander("Parsing issues", expanded=False):
+                                for err in parse_errors:
+                                    st.write(f"- {err}")
+                            log_debug_event("Parsing issues surfaced to user")
+
+                        if not entries:
+                            st.error("❌ LLM output decoded but produced zero valid schedule entries.")
+                            log_debug_event("No valid entries after parsing; aborting add")
+                            raise RuntimeError("No valid schedule entries produced")
 
                         if entries:
                             st.write(f"🔍 DEBUG: First entry - Employee: {entries[0].employee_name}, Date: {entries[0].start_date}")
+                            log_debug_event(f"Sample entry: {entries[0].employee_name} on {entries[0].start_date}")
 
                         # Check state before adding
                         before_count = len(st.session_state.schedule_manager.state.generated_entries)
                         st.write(f"🔍 DEBUG: Generated entries BEFORE adding: {before_count}")
+                        log_debug_event(f"Generated entries before add: {before_count}")
 
                         # Add to schedule manager
                         st.session_state.schedule_manager.add_generated_entries(entries)
+                        st.session_state.schedule_manager.state.generation_notes = notes
 
                         # Check state after adding
                         after_count = len(st.session_state.schedule_manager.state.generated_entries)
                         st.write(f"🔍 DEBUG: Generated entries AFTER adding: {after_count}")
+                        log_debug_event(f"Generated entries after add: {after_count}")
 
                         # Also keep in session state for backward compatibility
                         st.session_state.generated_entries = entries
+                        st.session_state.last_generated_payload = schedule_json
 
                         # Display success
                         st.success(f"✅ Successfully parsed and added {len(entries)} schedule entries!")
@@ -1517,6 +1556,7 @@ with tabs[8]:
                             with st.expander("📝 Generation Notes"):
                                 st.text(notes)
                     except Exception as e:
+                        log_debug_event(f"Schedule parsing failed: {e}")
                         st.warning(f"Could not parse schedule entries: {e}")
 
                     # Display usage
@@ -1548,9 +1588,23 @@ with tabs[9]:
     st.write(f"🔍 DEBUG Preview Tab - Uploaded entries: {len(schedule_mgr.state.uploaded_entries)}")
     st.write(f"🔍 DEBUG Preview Tab - Generated entries: {len(schedule_mgr.state.generated_entries)}")
     st.write(f"🔍 DEBUG Preview Tab - Total entries: {len(all_entries)}")
+    log_debug_event(
+        f"Preview tab opened: uploaded={len(schedule_mgr.state.uploaded_entries)}, generated={len(schedule_mgr.state.generated_entries)}"
+    )
 
     if schedule_mgr.state.generated_entries:
         st.write(f"🔍 DEBUG Preview Tab - First generated entry: {schedule_mgr.state.generated_entries[0].employee_name}, {schedule_mgr.state.generated_entries[0].start_date}")
+
+    with st.expander("🛠 Debug Event Log", expanded=False):
+        if st.session_state.debug_events:
+            for entry in reversed(st.session_state.debug_events[-30:]):
+                st.write(entry)
+        else:
+            st.write("No debug events recorded yet.")
+
+    if st.session_state.last_generated_payload:
+        with st.expander("🧾 Last Generated Payload", expanded=False):
+            st.json(st.session_state.last_generated_payload)
 
     # Control Panel
     col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
@@ -1559,6 +1613,8 @@ with tabs[9]:
         if st.button("🗑️ Clear Generated", help="Remove all generated schedule entries"):
             schedule_mgr.clear_generated()
             st.session_state.generated_entries = []
+            st.session_state.last_generated_payload = None
+            log_debug_event("Generated entries cleared via Preview tab")
             st.rerun()
 
     with col2:
@@ -1571,7 +1627,9 @@ with tabs[9]:
         if st.button("🔄 Regenerate", help="Clear generated entries and return to generation tab"):
             schedule_mgr.clear_generated()
             st.session_state.generated_entries = []
+            st.session_state.last_generated_payload = None
             st.info("Generated entries cleared. Go to 'Shift Prompt Studio' tab to regenerate.")
+            log_debug_event("Regenerate triggered: cleared existing generated entries")
 
     with col4:
         # Excel Export
