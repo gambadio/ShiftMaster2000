@@ -194,6 +194,77 @@ class RuleSet(BaseModel):
     )
     token_budgets: Dict[str, int] = Field(default_factory=lambda: {"max_prompt_chars": 120000})
 
+class ConflictType(str, Enum):
+    """Types of schedule conflicts"""
+    OVERLAP = "overlap"  # Same employee, overlapping times
+    UNDERSTAFFED = "understaffed"  # Not enough staff for shift
+    OVERSTAFFED = "overstaffed"  # Too many staff for shift
+    CONSTRAINT_VIOLATION = "constraint_violation"  # Employee constraint violated
+    TIME_OFF_CONFLICT = "time_off_conflict"  # Shift assigned during time-off
+    MISSING_ROLE = "missing_role"  # Employee doesn't have required role
+
+class ScheduleConflict(BaseModel):
+    """Represents a detected schedule conflict"""
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: f"conflict_{str(hash(str(id(object()))))}")
+    conflict_type: ConflictType
+    severity: str = "warning"  # "warning", "error", "info"
+    message: str
+    entry_ids: List[str] = Field(default_factory=list)  # Related entry IDs
+    date: Optional[str] = None
+    employee_name: Optional[str] = None
+    shift_role: Optional[str] = None
+
+class GeneratedScheduleEntry(BaseModel):
+    """A single shift or time-off entry from LLM generation"""
+    model_config = ConfigDict(extra="ignore")
+
+    # Unique identifier
+    id: str = Field(default_factory=lambda: f"gen_{str(hash(str(id(object()))))}")
+
+    # Core fields matching Teams Excel format
+    employee_name: str  # "Bänninger, Markus-MGB"
+    employee_email: Optional[str] = None
+    group: Optional[str] = None  # "Service Desk"
+    start_date: str  # "M/D/YYYY"
+    start_time: str  # "HH:MM"
+    end_date: str  # "M/D/YYYY"
+    end_time: str  # "HH:MM"
+    color_code: str  # "1. Weiß", "2. Blau", etc.
+    label: Optional[str] = None  # "Operation Lead", role/shift name
+    unpaid_break: Optional[int] = None  # Minutes
+    notes: Optional[str] = None
+    shared: str = "1. Geteilt"  # "1. Geteilt" or "2. Nicht freigegeben"
+
+    # Entry type
+    entry_type: str = "shift"  # "shift" or "time_off"
+    reason: Optional[str] = None  # For time-off: "Ferien", "Kompensation", etc.
+
+    # Metadata
+    source: str = "generated"  # "generated" or "uploaded"
+    is_modified: bool = False  # True if user edited after generation
+    has_conflict: bool = False  # True if conflicts detected
+    conflict_ids: List[str] = Field(default_factory=list)  # Associated conflict IDs
+
+class ScheduleState(BaseModel):
+    """Complete schedule state including uploaded and generated entries"""
+    model_config = ConfigDict(extra="ignore")
+
+    # Uploaded entries from Excel (past schedule data)
+    uploaded_entries: List[GeneratedScheduleEntry] = Field(default_factory=list)
+    uploaded_members: List[Dict[str, str]] = Field(default_factory=list)  # [{name, email}, ...]
+
+    # Generated entries from LLM
+    generated_entries: List[GeneratedScheduleEntry] = Field(default_factory=list)
+
+    # Detected conflicts
+    conflicts: List[ScheduleConflict] = Field(default_factory=list)
+
+    # Metadata
+    last_generated: Optional[str] = None  # ISO timestamp
+    generation_notes: Optional[str] = None  # Notes from LLM
+
 class Project(BaseModel):
     name: str = "Untitled"
     version: str = "2.0"  # Updated version
@@ -204,6 +275,8 @@ class Project(BaseModel):
     # New fields for enhanced functionality
     llm_config: Optional[LLMConfig] = None
     planning_period: Optional[PlanningPeriod] = None
+    # Schedule state
+    schedule_state: Optional[ScheduleState] = None
 
     def as_compact_json(self) -> Dict[str, Any]:
         return {

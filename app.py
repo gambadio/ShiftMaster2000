@@ -13,12 +13,15 @@ import asyncio
 from models import (
     Project, Employee, ShiftTemplate, LLMConfig, MCPServerConfig,
     PlanningPeriod, ScheduleEntry, TEAMS_COLOR_NAMES, ProviderType,
-    LLMProviderConfig, ChatSession, ChatMessage
+    LLMProviderConfig, ChatSession, ChatMessage, GeneratedScheduleEntry,
+    ScheduleConflict, ConflictType, ScheduleState
 )
 from utils import (
     save_project, save_complete_state, load_project_dict, load_complete_state,
-    compile_prompt, parse_schedule_to_payload, parse_dual_schedule_files
+    compile_prompt, parse_schedule_to_payload, parse_dual_schedule_files,
+    convert_uploaded_entries_to_schedule_entries, export_schedule_to_teams_excel
 )
+from schedule_manager import ScheduleManager, parse_llm_schedule_output
 from llm_client import create_llm_client, validate_provider_config
 from llm_manager import call_llm_with_reasoning, call_llm_sync
 from export_teams import export_to_teams_excel, export_to_teams_excel_multisheet, schedule_entries_from_llm_output
@@ -67,6 +70,8 @@ st.markdown("""
 # ---------------------------------------------------------
 if "project" not in st.session_state:
     st.session_state.project = Project()
+if "schedule_manager" not in st.session_state:
+    st.session_state.schedule_manager = ScheduleManager(st.session_state.project)
 if "schedule_payload" not in st.session_state:
     st.session_state.schedule_payload = None
 if "generated_schedule" not in st.session_state:
@@ -541,6 +546,16 @@ with tabs[3]:
                     )
 
                     st.session_state.schedule_payload = payload
+
+                    # Convert payload to schedule entries and add to schedule manager
+                    try:
+                        uploaded_entries, members = convert_uploaded_entries_to_schedule_entries(
+                            payload,
+                            payload.get("members", [])
+                        )
+                        st.session_state.schedule_manager.add_uploaded_entries(uploaded_entries, members)
+                    except Exception as e:
+                        st.warning(f"Could not add entries to schedule manager: {e}")
 
                     # Auto-detect shift patterns if checkbox is enabled
                     shift_detection_result = None
@@ -1363,9 +1378,25 @@ with tabs[8]:
                     # Try to parse and convert to entries
                     try:
                         schedule_json = json.loads(result["content"])
-                        entries = schedule_entries_from_llm_output(schedule_json)
+                        entries, notes = parse_llm_schedule_output(schedule_json)
+
+                        # Add to schedule manager
+                        st.session_state.schedule_manager.add_generated_entries(entries)
+
+                        # Also keep in session state for backward compatibility
                         st.session_state.generated_entries = entries
-                        st.info(f"✅ Parsed {len(entries)} schedule entries")
+
+                        # Display info with conflict count
+                        conflicts = st.session_state.schedule_manager.state.conflicts
+                        conflict_count = len([c for c in conflicts if c.severity == "error"])
+                        if conflict_count > 0:
+                            st.warning(f"✅ Parsed {len(entries)} schedule entries - ⚠️ {conflict_count} conflicts detected")
+                        else:
+                            st.success(f"✅ Parsed {len(entries)} schedule entries - No conflicts detected")
+
+                        if notes:
+                            with st.expander("📝 Generation Notes"):
+                                st.text(notes)
                     except Exception as e:
                         st.warning(f"Could not parse schedule entries: {e}")
 
@@ -1390,13 +1421,288 @@ with tabs[8]:
 with tabs[9]:
     st.subheader(get_text("preview_schedule", lang))
 
+    # Schedule Management Controls
+    schedule_mgr = st.session_state.schedule_manager
+    all_entries = schedule_mgr.get_all_entries()
+    conflicts = schedule_mgr.state.conflicts
+
+    # Control Panel
+    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
+
+    with col1:
+        if st.button("🗑️ Clear Generated", help="Remove all generated schedule entries"):
+            schedule_mgr.clear_generated()
+            st.session_state.generated_entries = []
+            st.rerun()
+
+    with col2:
+        if st.button("🗑️ Clear Uploaded", help="Remove uploaded schedule data"):
+            schedule_mgr.clear_uploaded()
+            st.session_state.schedule_payload = None
+            st.rerun()
+
+    with col3:
+        if st.button("🔄 Regenerate", help="Clear generated entries and return to generation tab"):
+            schedule_mgr.clear_generated()
+            st.session_state.generated_entries = []
+            st.info("Generated entries cleared. Go to 'Shift Prompt Studio' tab to regenerate.")
+
+    with col4:
+        # Excel Export
+        if len(all_entries) > 0:
+            if st.button("📥 Export to Excel", help="Export schedule to Teams-compatible Excel file"):
+                st.session_state.show_export_dialog = True
+
+    with col5:
+        # Conflict indicator
+        error_conflicts = [c for c in conflicts if c.severity == "error"]
+        warning_conflicts = [c for c in conflicts if c.severity == "warning"]
+        if error_conflicts:
+            st.error(f"⚠️ {len(error_conflicts)} errors")
+        elif warning_conflicts:
+            st.warning(f"⚠️ {len(warning_conflicts)} warnings")
+        else:
+            st.success("✅ No conflicts")
+
+    # Excel Export Dialog
+    if st.session_state.get("show_export_dialog", False):
+        with st.form("export_form"):
+            st.markdown("### Export Schedule to Excel")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                export_start_date = st.date_input("Start Date", value=datetime.now().date())
+            with col2:
+                export_end_date = st.date_input("End Date", value=(datetime.now() + timedelta(days=30)).date())
+
+            col1, col2 = st.columns(2)
+            with col1:
+                export_btn = st.form_submit_button("📥 Export", type="primary")
+            with col2:
+                cancel_btn = st.form_submit_button("Cancel")
+
+            if export_btn:
+                try:
+                    # Export to Excel
+                    output_path = f"schedule_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                    members = schedule_mgr.state.uploaded_members or []
+                    export_schedule_to_teams_excel(
+                        all_entries,
+                        members,
+                        output_path,
+                        export_start_date,
+                        export_end_date
+                    )
+
+                    # Provide download
+                    with open(output_path, "rb") as f:
+                        st.download_button(
+                            label="📥 Download Excel File",
+                            data=f,
+                            file_name=output_path,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    st.success(f"✅ Exported to {output_path}")
+                    st.session_state.show_export_dialog = False
+                except Exception as e:
+                    st.error(f"Export failed: {e}")
+
+            if cancel_btn:
+                st.session_state.show_export_dialog = False
+                st.rerun()
+
     # Check what data we have available
-    has_imported = st.session_state.schedule_payload is not None
-    has_generated = st.session_state.generated_entries and len(st.session_state.generated_entries) > 0
+    has_imported = schedule_mgr.state.uploaded_entries and len(schedule_mgr.state.uploaded_entries) > 0
+    has_generated = schedule_mgr.state.generated_entries and len(schedule_mgr.state.generated_entries) > 0
 
     if not has_imported and not has_generated:
         st.info("📋 Import a Teams schedule or generate a new schedule to see preview")
     else:
+        # Unified Statistics
+        st.markdown("### 📊 Schedule Overview")
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        with col1:
+            st.metric("Total Entries", len(all_entries))
+        with col2:
+            uploaded_count = len(schedule_mgr.state.uploaded_entries)
+            st.metric("Uploaded", uploaded_count)
+        with col3:
+            generated_count = len(schedule_mgr.state.generated_entries)
+            st.metric("Generated", generated_count)
+        with col4:
+            shift_count = sum(1 for e in all_entries if e.entry_type == "shift")
+            st.metric("Shifts", shift_count)
+        with col5:
+            timeoff_count = sum(1 for e in all_entries if e.entry_type == "time_off")
+            st.metric("Time-Off", timeoff_count)
+
+        st.markdown("---")
+
+        # Unified Calendar View
+        if all_entries:
+            st.markdown("### 📅 Calendar View")
+
+            # Date range selection for calendar
+            try:
+                dates = []
+                for e in all_entries:
+                    try:
+                        dt = pd.to_datetime(e.start_date, format='%m/%d/%Y').date()
+                        dates.append(dt)
+                    except:
+                        try:
+                            dt = pd.to_datetime(e.start_date).date()
+                            dates.append(dt)
+                        except:
+                            pass
+
+                if dates:
+                    min_date = min(dates)
+                    max_date = max(dates)
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        cal_start = st.date_input("Calendar Start", value=min_date, key="cal_start")
+                    with col2:
+                        cal_end = st.date_input("Calendar End", value=max_date, key="cal_end")
+
+                    # Filter entries for calendar view
+                    filtered_entries = [
+                        e for e in all_entries
+                        if cal_start <= pd.to_datetime(e.start_date, errors='coerce').date() <= cal_end
+                    ]
+
+                    # Render calendar
+                    render_calendar_preview(
+                        filtered_entries,
+                        cal_start,
+                        cal_end,
+                        title=f"Schedule Calendar ({cal_start} to {cal_end})"
+                    )
+
+                    # Display conflicts below calendar
+                    if conflicts:
+                        st.markdown("### ⚠️ Detected Conflicts")
+                        render_conflicts(conflicts)
+
+                    # Entry Editor
+                    with st.expander("✏️ Edit Schedule Entries", expanded=False):
+                        st.markdown("#### Edit Individual Entries")
+
+                        # Select entry type to edit
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            edit_source = st.selectbox(
+                                "Source",
+                                ["Generated", "Uploaded", "All"],
+                                key="edit_source_filter"
+                            )
+                        with col2:
+                            edit_type = st.selectbox(
+                                "Type",
+                                ["All", "Shifts", "Time-Off"],
+                                key="edit_type_filter"
+                            )
+
+                        # Filter entries based on selection
+                        editable_entries = all_entries
+                        if edit_source == "Generated":
+                            editable_entries = schedule_mgr.state.generated_entries
+                        elif edit_source == "Uploaded":
+                            editable_entries = schedule_mgr.state.uploaded_entries
+
+                        if edit_type == "Shifts":
+                            editable_entries = [e for e in editable_entries if e.entry_type == "shift"]
+                        elif edit_type == "Time-Off":
+                            editable_entries = [e for e in editable_entries if e.entry_type == "time_off"]
+
+                        if not editable_entries:
+                            st.info("No entries match the selected filters")
+                        else:
+                            # Display entries for editing
+                            st.write(f"Found {len(editable_entries)} entries")
+
+                            # Select an entry to edit
+                            entry_options = []
+                            for e in editable_entries[:50]:  # Limit to first 50 for performance
+                                conflict_marker = "⚠️ " if e.has_conflict else ""
+                                entry_label = f"{conflict_marker}{e.employee_name} - {e.start_date} {e.start_time} ({e.label or e.entry_type})"
+                                entry_options.append((entry_label, e.id))
+
+                            if entry_options:
+                                selected_entry_label = st.selectbox(
+                                    "Select Entry to Edit",
+                                    [label for label, _ in entry_options],
+                                    key="select_entry_to_edit"
+                                )
+
+                                # Find the selected entry
+                                selected_id = next((eid for label, eid in entry_options if label == selected_entry_label), None)
+                                if selected_id:
+                                    entry = schedule_mgr.get_entry_by_id(selected_id)
+                                    if entry:
+                                        st.markdown("---")
+                                        st.markdown(f"**Editing:** {entry.employee_name} - {entry.label or entry.entry_type}")
+
+                                        with st.form(f"edit_entry_{selected_id}"):
+                                            col1, col2 = st.columns(2)
+                                            with col1:
+                                                new_start_date = st.text_input("Start Date", value=entry.start_date)
+                                                new_start_time = st.text_input("Start Time", value=entry.start_time)
+                                            with col2:
+                                                new_end_date = st.text_input("End Date", value=entry.end_date)
+                                                new_end_time = st.text_input("End Time", value=entry.end_time)
+
+                                            col1, col2 = st.columns(2)
+                                            with col1:
+                                                color_options = ["1. Weiß", "2. Blau", "3. Grün", "4. Lila", "5. Rosa",
+                                                               "6. Gelb", "8. Dunkelblau", "9. Dunkelgrün", "10. Dunkelviolett",
+                                                               "11. Dunkelrosa", "12. Dunkelgelb", "13. Grau"]
+                                                current_color_idx = color_options.index(entry.color_code) if entry.color_code in color_options else 0
+                                                new_color = st.selectbox("Color Code", color_options, index=current_color_idx)
+                                            with col2:
+                                                new_label = st.text_input("Label", value=entry.label or "")
+
+                                            new_notes = st.text_area("Notes", value=entry.notes or "")
+
+                                            col1, col2, col3 = st.columns(3)
+                                            with col1:
+                                                save_btn = st.form_submit_button("💾 Save Changes", type="primary")
+                                            with col2:
+                                                delete_btn = st.form_submit_button("🗑️ Delete Entry", type="secondary")
+                                            with col3:
+                                                cancel_btn = st.form_submit_button("Cancel")
+
+                                            if save_btn:
+                                                updates = {
+                                                    "start_date": new_start_date,
+                                                    "start_time": new_start_time,
+                                                    "end_date": new_end_date,
+                                                    "end_time": new_end_time,
+                                                    "color_code": new_color,
+                                                    "label": new_label,
+                                                    "notes": new_notes
+                                                }
+                                                if schedule_mgr.update_entry(selected_id, updates):
+                                                    st.success("✅ Entry updated successfully")
+                                                    st.rerun()
+                                                else:
+                                                    st.error("Failed to update entry")
+
+                                            if delete_btn:
+                                                if schedule_mgr.delete_entry(selected_id):
+                                                    st.success("✅ Entry deleted")
+                                                    st.rerun()
+                                                else:
+                                                    st.error("Failed to delete entry")
+
+                else:
+                    st.warning("Could not parse dates from schedule entries")
+            except Exception as e:
+                st.error(f"Error rendering calendar: {e}")
+
+        st.markdown("---")
         # Tabs for switching between imported and generated views
         preview_tabs = []
         if has_imported:

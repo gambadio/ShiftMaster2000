@@ -946,3 +946,265 @@ def detect_shift_patterns_from_schedule(
         "patterns": detected_patterns,
         "message": f"Detected {len(detected_patterns)} shift patterns, added {len(added_shifts)} new shift templates"
     }
+
+# ==============================================================================
+# SCHEDULE ENTRY EXCEL EXPORT (Teams Format)
+# ==============================================================================
+
+def export_schedule_to_teams_excel(
+    entries: List[Any],  # List[GeneratedScheduleEntry]
+    members: List[Dict[str, str]],
+    output_path: str,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None
+) -> str:
+    """
+    Export schedule entries to Teams-compatible Excel format
+    
+    Args:
+        entries: List of GeneratedScheduleEntry objects
+        members: List of {name, email} dicts for Mitglieder sheet
+        output_path: Path to save Excel file
+        start_date: Optional filter start date
+        end_date: Optional filter end date
+    
+    Returns:
+        Path to created file
+    """
+    import openpyxl
+    from openpyxl.styles import Font
+    from openpyxl.worksheet.datavalidation import DataValidation
+    
+    # Filter entries by date range if specified
+    filtered_entries = entries
+    if start_date or end_date:
+        filtered_entries = []
+        for entry in entries:
+            try:
+                entry_date = _parse_date(entry.start_date)
+                if start_date and entry_date < start_date:
+                    continue
+                if end_date and entry_date > end_date:
+                    continue
+                filtered_entries.append(entry)
+            except:
+                filtered_entries.append(entry)  # Include if can't parse
+    
+    # Separate shifts and time-off
+    shifts = [e for e in filtered_entries if e.entry_type == "shift"]
+    time_offs = [e for e in filtered_entries if e.entry_type == "time_off"]
+    
+    # Create workbook
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)  # Remove default sheet
+    
+    # Create Schichten (Shifts) sheet
+    ws_shifts = wb.create_sheet("Schichten")
+    _write_shifts_sheet(ws_shifts, shifts)
+    
+    # Create Arbeitsfreie Zeit (Time-Off) sheet
+    ws_timeoff = wb.create_sheet("Arbeitsfreie Zeit")
+    _write_timeoff_sheet(ws_timeoff, time_offs)
+    
+    # Create Mitglieder (Members) sheet
+    ws_members = wb.create_sheet("Mitglieder")
+    _write_members_sheet(ws_members, members)
+    
+    # Save workbook
+    wb.save(output_path)
+    return output_path
+
+
+def _write_shifts_sheet(ws, shifts: List[Any]) -> None:
+    """Write Schichten sheet with proper formatting"""
+    from openpyxl.styles import Font
+    from openpyxl.worksheet.datavalidation import DataValidation
+    
+    # Headers
+    headers = [
+        "Mitglied", "E-Mail (geschäftlich)", "Gruppe", "Startdatum", "Startzeit",
+        "Enddatum", "Endzeit", "Themenfarbe", "Bezeichnung",
+        "Unbezahlte Pause (Minuten)", "Notizen", "Geteilt"
+    ]
+    ws.append(headers)
+    
+    # Bold headers
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    
+    # Add data validation for color codes
+    color_values = [
+        "1. Weiß", "2. Blau", "3. Grün", "4. Lila", "5. Rosa", "6. Gelb",
+        "8. Dunkelblau", "9. Dunkelgrün", "10. Dunkelviolett", "11. Dunkelrosa",
+        "12. Dunkelgelb", "13. Grau"
+    ]
+    color_dv = DataValidation(type="list", formula1=f'"{",".join(color_values)}"', allow_blank=False)
+    ws.add_data_validation(color_dv)
+    
+    # Add data validation for shared status
+    shared_values = ["1. Geteilt", "2. Nicht freigegeben"]
+    shared_dv = DataValidation(type="list", formula1=f'"{",".join(shared_values)}"', allow_blank=False)
+    ws.add_data_validation(shared_dv)
+    
+    # Write shift data
+    for entry in shifts:
+        row = [
+            entry.employee_name,
+            entry.employee_email or "",
+            entry.group or "",
+            entry.start_date,
+            entry.start_time,
+            entry.end_date,
+            entry.end_time,
+            entry.color_code,
+            entry.label or "",
+            entry.unpaid_break,
+            entry.notes or "",
+            entry.shared
+        ]
+        ws.append(row)
+        
+        # Apply validation to this row
+        row_num = ws.max_row
+        color_dv.add(f"H{row_num}")
+        shared_dv.add(f"L{row_num}")
+
+
+def _write_timeoff_sheet(ws, time_offs: List[Any]) -> None:
+    """Write Arbeitsfreie Zeit sheet with proper formatting"""
+    from openpyxl.styles import Font
+    from openpyxl.worksheet.datavalidation import DataValidation
+    
+    # Headers
+    headers = [
+        "Mitglied", "E-Mail (geschäftlich)", "Startdatum", "Startzeit",
+        "Enddatum", "Endzeit", "Grund für arbeitsfreie Zeit", "Themenfarbe",
+        "Notizen", "Geteilt"
+    ]
+    ws.append(headers)
+    
+    # Bold headers
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    
+    # Add data validation
+    color_values = [
+        "1. Weiß", "2. Blau", "3. Grün", "4. Lila", "5. Rosa", "6. Gelb",
+        "8. Dunkelblau", "9. Dunkelgrün", "10. Dunkelviolett", "11. Dunkelrosa",
+        "12. Dunkelgelb", "13. Grau"
+    ]
+    color_dv = DataValidation(type="list", formula1=f'"{",".join(color_values)}"', allow_blank=False)
+    ws.add_data_validation(color_dv)
+    
+    shared_values = ["1. Geteilt", "2. Nicht freigegeben"]
+    shared_dv = DataValidation(type="list", formula1=f'"{",".join(shared_values)}"', allow_blank=False)
+    ws.add_data_validation(shared_dv)
+    
+    # Write time-off data
+    for entry in time_offs:
+        row = [
+            entry.employee_name,
+            entry.employee_email or "",
+            entry.start_date,
+            entry.start_time or "00:00",
+            entry.end_date,
+            entry.end_time or "00:00",
+            entry.reason or "",
+            entry.color_code if hasattr(entry, 'color_code') and entry.color_code else "",
+            entry.notes or "",
+            entry.shared
+        ]
+        ws.append(row)
+        
+        # Apply validation
+        row_num = ws.max_row
+        if entry.color_code:
+            color_dv.add(f"H{row_num}")
+        shared_dv.add(f"J{row_num}")
+
+
+def _write_members_sheet(ws, members: List[Dict[str, str]]) -> None:
+    """Write Mitglieder sheet"""
+    from openpyxl.styles import Font
+    
+    # Headers
+    ws.append(["Mitglied", "E-Mail (geschäftlich)"])
+    
+    # Bold headers
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    
+    # Write member data
+    for member in members:
+        ws.append([member.get("name", ""), member.get("email", "")])
+
+
+def convert_uploaded_entries_to_schedule_entries(
+    schedule_payload: Dict[str, Any],
+    members: List[Dict[str, str]] = None
+) -> Tuple[List[Any], List[Dict[str, str]]]:
+    """
+    Convert uploaded schedule payload to GeneratedScheduleEntry objects
+    
+    Args:
+        schedule_payload: Parsed schedule from parse_teams_excel_multisheet
+        members: Optional list of member dicts
+    
+    Returns:
+        Tuple of (entries, members)
+    """
+    from models import GeneratedScheduleEntry
+    
+    entries = []
+    
+    # Process past entries (shifts and time-off)
+    for past_entry in schedule_payload.get("past", []):
+        entry = _payload_entry_to_schedule_entry(past_entry, source="uploaded")
+        if entry:
+            entries.append(entry)
+    
+    # Process future entries
+    for future_entry in schedule_payload.get("future", []):
+        entry = _payload_entry_to_schedule_entry(future_entry, source="uploaded")
+        if entry:
+            entries.append(entry)
+    
+    # Extract members if not provided
+    if not members:
+        members = schedule_payload.get("members", [])
+    
+    return entries, members
+
+
+def _payload_entry_to_schedule_entry(payload_entry: Dict[str, Any], source: str = "uploaded") -> Optional[Any]:
+    """Convert a payload entry dict to GeneratedScheduleEntry"""
+    from models import GeneratedScheduleEntry
+    
+    try:
+        # Determine entry type
+        entry_type = payload_entry.get("entry_type", "shift")
+        
+        # Build entry data
+        entry_data = {
+            "employee_name": payload_entry.get("employee_name", ""),
+            "employee_email": payload_entry.get("employee_email"),
+            "group": payload_entry.get("group"),
+            "start_date": payload_entry.get("start_date", ""),
+            "start_time": payload_entry.get("start_time", "00:00"),
+            "end_date": payload_entry.get("end_date", payload_entry.get("start_date", "")),
+            "end_time": payload_entry.get("end_time", "00:00"),
+            "color_code": payload_entry.get("color_code", "1. Weiß"),
+            "label": payload_entry.get("label"),
+            "unpaid_break": payload_entry.get("unpaid_break"),
+            "notes": payload_entry.get("notes"),
+            "shared": payload_entry.get("shared", "1. Geteilt"),
+            "entry_type": entry_type,
+            "reason": payload_entry.get("reason"),
+            "source": source
+        }
+        
+        return GeneratedScheduleEntry(**entry_data)
+    except Exception as e:
+        print(f"Error converting payload entry: {e}")
+        return None
+

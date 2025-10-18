@@ -32,7 +32,7 @@ SYSTEM_TEMPLATE = """\
 
 You will produce a fair, rotation-balanced schedule for the planning period that covers all required roles and shifts,
 honors hard constraints, and tries to satisfy soft preferences.
-Resolve conflicts explicitly and record any rule violations with a short explanation and a severity score (1-3).
+Resolve conflicts explicitly and note any rule violations.
 
 {teams_color_spec}
 
@@ -45,22 +45,50 @@ Data dictionary:
 Rules (free text may include exceptions, blackouts, public holidays, and rotation heuristics):
 {narrative_rules}
 
-Strict output format (JSON only, no prose):
-{ofmt}
+## CRITICAL: Output Format for Microsoft Teams Shifts Import
+
+You MUST return a JSON object with this EXACT structure:
+
+```json
+{{
+  "shifts": [
+    {{
+      "employee_name": "Lastname, Firstname-MGB",
+      "employee_email": "firstname.lastname@mgb.ch",
+      "group": "Service Desk",
+      "start_date": "10/1/2025",
+      "start_time": "07:00",
+      "end_date": "10/1/2025",
+      "end_time": "16:00",
+      "color_code": "1. Weiß",
+      "label": "Operation Lead",
+      "unpaid_break": null,
+      "notes": "",
+      "shared": "1. Geteilt"
+    }}
+  ],
+  "notes": "Schedule generation notes, violations, and explanations"
+}}
+```
+
+**Field Requirements:**
+- `employee_name`: Exact full name from employees list (e.g., "Bänninger, Markus-MGB")
+- `employee_email`: Business email from employees list
+- `group`: Department/team (e.g., "Service Desk")
+- `start_date`: M/D/YYYY format (e.g., "10/1/2025")
+- `start_time`: HH:MM 24-hour format (e.g., "07:00")
+- `end_date`: M/D/YYYY format (usually same as start_date)
+- `end_time`: HH:MM 24-hour format (e.g., "16:00")
+- `color_code`: MUST be one of: "1. Weiß", "2. Blau", "3. Grün", "4. Lila", "5. Rosa", "6. Gelb", "8. Dunkelblau", "9. Dunkelgrün", "10. Dunkelviolett", "11. Dunkelrosa", "12. Dunkelgelb", "13. Grau"
+- `label`: Role/shift name from shifts templates (e.g., "Operation Lead", "Dispatcher Wove")
+- `unpaid_break`: Integer minutes or null
+- `notes`: Any relevant notes about this specific assignment
+- `shared`: MUST be "1. Geteilt" (shared) or "2. Nicht freigegeben" (not shared)
 
 When you must break a rule to cover a critical shift, prefer breaking soft preferences first. If a role cannot be covered,
-propose alternatives in notes[]. Keep total assignments per person proportional to employment percent when possible.
+explain in the top-level `notes` field. Keep total assignments per person proportional to employment percent when possible.
 
-**Important**: Each assignment must include:
-- employee_name: Full name of the employee
-- employee_email: Business email address
-- role: The shift role/position
-- shift_id: ID of the shift template
-- date: ISO date (YYYY-MM-DD)
-- start_time: HH:MM format
-- end_time: HH:MM format
-- color_code: Appropriate Teams color code (1-13)
-- notes: Any relevant notes or exceptions
+**IMPORTANT**: Output ONLY valid JSON matching this structure. No additional text before or after the JSON.
 """
 
 SCHEDULE_ADDENDUM_TEMPLATE = """\
