@@ -59,7 +59,7 @@ def render_calendar_preview(
     schedule_entries: List[ScheduleEntry],
     start_date: date,
     end_date: date,
-    title: str = "Schedule Preview"
+    title: Optional[str] = "Schedule Preview"
 ):
     """
     Render a calendar-style preview of the schedule with navigation
@@ -68,16 +68,19 @@ def render_calendar_preview(
         schedule_entries: List of ScheduleEntry objects
         start_date: Start date of the overall schedule range
         end_date: End date of the overall schedule range
-        title: Title for the preview section
+        title: Optional title for the preview section
     """
-    st.subheader(title)
+    key_suffix = title or "schedule_preview"
+
+    if title:
+        st.subheader(title)
 
     if not schedule_entries:
         st.info("No schedule entries to display.")
         return
 
     # Initialize session state for calendar view offset (weeks from start)
-    view_key = f"calendar_view_offset_{title}"
+    view_key = f"calendar_view_offset_{key_suffix}"
     if view_key not in st.session_state:
         st.session_state[view_key] = 0
 
@@ -85,17 +88,17 @@ def render_calendar_preview(
     col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
 
     with col1:
-        if st.button("◀ Previous Week", key=f"prev_{title}"):
+        if st.button("◀ Previous Week", key=f"prev_{key_suffix}"):
             st.session_state[view_key] -= 1
             st.rerun()
 
     with col2:
-        if st.button("Next Week ▶", key=f"next_{title}"):
+        if st.button("Next Week ▶", key=f"next_{key_suffix}"):
             st.session_state[view_key] += 1
             st.rerun()
 
     with col3:
-        if st.button("📅 Go to Today", key=f"today_{title}"):
+        if st.button("📅 Go to Today", key=f"today_{key_suffix}"):
             # Navigate to the week containing today
             target_date = date.today()
 

@@ -1614,185 +1614,98 @@ with tabs[8]:
 # TAB 10: Preview
 # ---------------------------------------------------------
 with tabs[9]:
-    st.subheader(get_text("preview_schedule", lang))
+    preview_title = get_text("preview_schedule", lang)
 
     # Schedule Management Controls
     schedule_mgr = st.session_state.schedule_manager
     all_entries = schedule_mgr.get_all_entries()
 
-    st.write(f"🔍 DEBUG Preview Tab - Uploaded entries: {len(schedule_mgr.state.uploaded_entries)}")
-    st.write(f"🔍 DEBUG Preview Tab - Generated entries: {len(schedule_mgr.state.generated_entries)}")
-    st.write(f"🔍 DEBUG Preview Tab - Total entries: {len(all_entries)}")
+    uploaded_count = len(schedule_mgr.state.uploaded_entries)
+    generated_count = len(schedule_mgr.state.generated_entries)
+    total_entries = len(all_entries)
+    shift_count = sum(1 for e in all_entries if e.entry_type == "shift")
+    timeoff_count = sum(1 for e in all_entries if e.entry_type == "time_off")
+
+    debug_messages = [
+        f"🔍 DEBUG Preview Tab - Uploaded entries: {uploaded_count}",
+        f"🔍 DEBUG Preview Tab - Generated entries: {generated_count}",
+        f"🔍 DEBUG Preview Tab - Total entries: {total_entries}",
+    ]
 
     log_debug_event(
-        f"Preview tab opened: uploaded={len(schedule_mgr.state.uploaded_entries)}, generated={len(schedule_mgr.state.generated_entries)}"
+        f"Preview tab opened: uploaded={uploaded_count}, generated={generated_count}"
     )
 
     if schedule_mgr.state.generated_entries:
-        st.write(
-            f"🔍 DEBUG Preview Tab - First generated entry: {schedule_mgr.state.generated_entries[0].employee_name}, {schedule_mgr.state.generated_entries[0].start_date}"
+        first_entry = schedule_mgr.state.generated_entries[0]
+        debug_messages.append(
+            f"🔍 DEBUG Preview Tab - First generated entry: {first_entry.employee_name}, {first_entry.start_date}"
         )
 
-    # Control Panel
-    col1, col2, col3 = st.columns([2, 2, 2])
+    has_imported = uploaded_count > 0
+    has_generated = generated_count > 0
+    has_data = has_imported or has_generated
 
-    with col1:
-        if st.button("🗑️ Clear Generated", help="Remove all generated schedule entries"):
-            schedule_mgr.clear_generated()
-            st.session_state.generated_entries = []
-            st.session_state.last_generated_payload = None
-            log_debug_event("Generated entries cleared via Preview tab")
-            st.rerun()
-
-    with col2:
-        if st.button("🗑️ Clear Uploaded", help="Remove uploaded schedule data"):
-            schedule_mgr.clear_uploaded()
-            st.session_state.schedule_payload = None
-            st.rerun()
-
-    with col3:
-        # Excel Export
-        if len(all_entries) > 0:
-            if st.button("📥 Export to Excel", help="Export schedule to Teams-compatible Excel file"):
-                st.session_state.show_export_dialog = True
-
-    # Excel Export Dialog
-    if st.session_state.get("show_export_dialog", False):
-        with st.form("export_form"):
-            st.markdown("### Export Schedule to Excel")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                export_start_date = st.date_input("Start Date", value=datetime.now().date())
-            with col2:
-                export_end_date = st.date_input("End Date", value=(datetime.now() + timedelta(days=30)).date())
-
-            col1, col2 = st.columns(2)
-            with col1:
-                export_btn = st.form_submit_button("📥 Export", type="primary")
-            with col2:
-                cancel_btn = st.form_submit_button("Cancel")
-
-            if export_btn:
-                try:
-                    # Export to Excel
-                    output_path = f"schedule_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                    members = schedule_mgr.state.uploaded_members or []
-                    export_schedule_to_teams_excel(
-                        all_entries,
-                        members,
-                        output_path,
-                        export_start_date,
-                        export_end_date
-                    )
-
-                    # Provide download
-                    with open(output_path, "rb") as f:
-                        st.download_button(
-                            label="📥 Download Excel File",
-                            data=f,
-                            file_name=output_path,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                    st.success(f"✅ Exported to {output_path}")
-                    st.session_state.show_export_dialog = False
-                except Exception as e:
-                    st.error(f"Export failed: {e}")
-
-            if cancel_btn:
-                st.session_state.show_export_dialog = False
-                st.rerun()
-
-    # Check what data we have available
-    has_imported = schedule_mgr.state.uploaded_entries and len(schedule_mgr.state.uploaded_entries) > 0
-    has_generated = schedule_mgr.state.generated_entries and len(schedule_mgr.state.generated_entries) > 0
-
-    if not has_imported and not has_generated:
+    if not has_data:
         st.info("📋 Import a Teams schedule or generate a new schedule to see preview")
     else:
-        # Unified Statistics
-        st.markdown("### 📊 Schedule Overview")
-        col1, col2, col3, col4, col5 = st.columns(5)
-
-        with col1:
-            st.metric("Total Entries", len(all_entries))
-        with col2:
-            uploaded_count = len(schedule_mgr.state.uploaded_entries)
-            st.metric("Uploaded", uploaded_count)
-        with col3:
-            generated_count = len(schedule_mgr.state.generated_entries)
-            st.metric("Generated", generated_count)
-        with col4:
-            shift_count = sum(1 for e in all_entries if e.entry_type == "shift")
-            st.metric("Shifts", shift_count)
-        with col5:
-            timeoff_count = sum(1 for e in all_entries if e.entry_type == "time_off")
-            st.metric("Time-Off", timeoff_count)
-
-        st.markdown("---")
-
-        # Calendar View
         st.markdown("### 📅 Calendar View")
 
         if all_entries:
-            # Date range selection for calendar
             try:
-                dates = []
+                dates: List[date] = []
                 for e in all_entries:
                     try:
-                        dt = pd.to_datetime(e.start_date, format='%m/%d/%Y').date()
+                        dt = pd.to_datetime(e.start_date, format="%m/%d/%Y").date()
                         dates.append(dt)
-                    except:
+                    except Exception:
                         try:
                             dt = pd.to_datetime(e.start_date).date()
                             dates.append(dt)
-                        except:
+                        except Exception:
                             pass
 
                 if dates:
                     min_date = min(dates)
                     max_date = max(dates)
 
-                    # Convert to ScheduleEntry objects for visualization
                     from models import ScheduleEntry
 
-                    schedule_entries = []
+                    schedule_entries: List[ScheduleEntry] = []
                     for e in all_entries:
                         if isinstance(e, ScheduleEntry):
                             schedule_entries.append(e)
                         else:
-                            # Convert GeneratedScheduleEntry to ScheduleEntry
-                            schedule_entries.append(ScheduleEntry(
-                                employee_name=e.employee_name,
-                                employee_email=getattr(e, 'employee_email', None),
-                                group=getattr(e, 'group', None),
-                                start_date=e.start_date,
-                                start_time=getattr(e, 'start_time', None),
-                                end_date=getattr(e, 'end_date', e.start_date),
-                                end_time=getattr(e, 'end_time', None),
-                                color_code=getattr(e, 'color_code', None),
-                                label=getattr(e, 'label', None),
-                                unpaid_break=getattr(e, 'unpaid_break', None),
-                                notes=getattr(e, 'notes', None),
-                                shared=getattr(e, 'shared', "1. Geteilt"),
-                                entry_type=e.entry_type,
-                                reason=getattr(e, 'reason', None),
-                                source=getattr(e, 'source', 'uploaded')
-                            ))
+                            schedule_entries.append(
+                                ScheduleEntry(
+                                    employee_name=e.employee_name,
+                                    employee_email=getattr(e, "employee_email", None),
+                                    group=getattr(e, "group", None),
+                                    start_date=e.start_date,
+                                    start_time=getattr(e, "start_time", None),
+                                    end_date=getattr(e, "end_date", e.start_date),
+                                    end_time=getattr(e, "end_time", None),
+                                    color_code=getattr(e, "color_code", None),
+                                    label=getattr(e, "label", None),
+                                    unpaid_break=getattr(e, "unpaid_break", None),
+                                    notes=getattr(e, "notes", None),
+                                    shared=getattr(e, "shared", "1. Geteilt"),
+                                    entry_type=e.entry_type,
+                                    reason=getattr(e, "reason", None),
+                                    source=getattr(e, "source", "uploaded"),
+                                )
+                            )
 
-                    # Render calendar
                     render_calendar_preview(
                         schedule_entries,
                         min_date,
                         max_date,
-                        title="Schedule Calendar"
+                        title=None
                     )
 
-                    # Entry Editor
                     with st.expander("✏️ Edit Schedule Entries", expanded=False):
                         st.markdown("#### Edit Individual Entries")
 
-                        # Select entry type to edit
                         col1, col2 = st.columns(2)
                         with col1:
                             edit_source = st.selectbox(
@@ -1807,7 +1720,6 @@ with tabs[9]:
                                 key="edit_type_filter"
                             )
 
-                        # Filter entries based on selection
                         editable_entries = all_entries
                         if edit_source == "Generated":
                             editable_entries = schedule_mgr.state.generated_entries
@@ -1822,12 +1734,10 @@ with tabs[9]:
                         if not editable_entries:
                             st.info("No entries match the selected filters")
                         else:
-                            # Display entries for editing
                             st.write(f"Found {len(editable_entries)} entries")
 
-                            # Select an entry to edit
                             entry_options = []
-                            for e in editable_entries[:50]:  # Limit to first 50 for performance
+                            for e in editable_entries[:50]:
                                 conflict_marker = "⚠️ " if e.has_conflict else ""
                                 entry_label = f"{conflict_marker}{e.employee_name} - {e.start_date} {e.start_time} ({e.label or e.entry_type})"
                                 entry_options.append((entry_label, e.id))
@@ -1839,8 +1749,10 @@ with tabs[9]:
                                     key="select_entry_to_edit"
                                 )
 
-                                # Find the selected entry
-                                selected_id = next((eid for label, eid in entry_options if label == selected_entry_label), None)
+                                selected_id = next(
+                                    (eid for label, eid in entry_options if label == selected_entry_label),
+                                    None
+                                )
                                 if selected_id:
                                     entry = schedule_mgr.get_entry_by_id(selected_id)
                                     if entry:
@@ -1858,9 +1770,11 @@ with tabs[9]:
 
                                             col1, col2 = st.columns(2)
                                             with col1:
-                                                color_options = ["1. Weiß", "2. Blau", "3. Grün", "4. Lila", "5. Rosa",
-                                                               "6. Gelb", "8. Dunkelblau", "9. Dunkelgrün", "10. Dunkelviolett",
-                                                               "11. Dunkelrosa", "12. Dunkelgelb", "13. Grau"]
+                                                color_options = [
+                                                    "1. Weiß", "2. Blau", "3. Grün", "4. Lila", "5. Rosa",
+                                                    "6. Gelb", "8. Dunkelblau", "9. Dunkelgrün", "10. Dunkelviolett",
+                                                    "11. Dunkelrosa", "12. Dunkelgelb", "13. Grau"
+                                                ]
                                                 current_color_idx = color_options.index(entry.color_code) if entry.color_code in color_options else 0
                                                 new_color = st.selectbox("Color Code", color_options, index=current_color_idx)
                                             with col2:
@@ -1898,17 +1812,101 @@ with tabs[9]:
                                                     st.rerun()
                                                 else:
                                                     st.error("Failed to delete entry")
-
                 else:
                     st.warning("Could not parse dates from schedule entries")
             except Exception as e:
                 st.error(f"Error rendering calendar: {e}")
+        else:
+            st.warning("No schedule entries available to display.")
 
-        # DEBUG SECTION - Moved to bottom
         st.markdown("---")
+        st.markdown("### 📊 Schedule Overview")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Total Entries", total_entries)
+        with col2:
+            st.metric("Uploaded", uploaded_count)
+        with col3:
+            st.metric("Generated", generated_count)
+        with col4:
+            st.metric("Shifts", shift_count)
+        with col5:
+            st.metric("Time-Off", timeoff_count)
+
+        st.markdown("---")
+        st.markdown("### ⚙️ Schedule Actions")
+        actions_col1, actions_col2, actions_col3 = st.columns([2, 2, 2])
+
+        with actions_col1:
+            if st.button("🗑️ Clear Generated", help="Remove all generated schedule entries"):
+                schedule_mgr.clear_generated()
+                st.session_state.generated_entries = []
+                st.session_state.last_generated_payload = None
+                log_debug_event("Generated entries cleared via Preview tab")
+                st.rerun()
+
+        with actions_col2:
+            if st.button("🗑️ Clear Uploaded", help="Remove uploaded schedule data"):
+                schedule_mgr.clear_uploaded()
+                st.session_state.schedule_payload = None
+                st.rerun()
+
+        with actions_col3:
+            if len(all_entries) > 0:
+                if st.button("📥 Export to Excel", help="Export schedule to Teams-compatible Excel file"):
+                    st.session_state.show_export_dialog = True
+
+        if st.session_state.get("show_export_dialog", False):
+            with st.form("export_form"):
+                st.markdown("### Export Schedule to Excel")
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    export_start_date = st.date_input("Start Date", value=datetime.now().date())
+                with col2:
+                    export_end_date = st.date_input("End Date", value=(datetime.now() + timedelta(days=30)).date())
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    export_btn = st.form_submit_button("📥 Export", type="primary")
+                with col2:
+                    cancel_btn = st.form_submit_button("Cancel")
+
+                if export_btn:
+                    try:
+                        output_path = f"schedule_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                        members = schedule_mgr.state.uploaded_members or []
+                        export_schedule_to_teams_excel(
+                            all_entries,
+                            members,
+                            output_path,
+                            export_start_date,
+                            export_end_date
+                        )
+
+                        with open(output_path, "rb") as f:
+                            st.download_button(
+                                label="📥 Download Excel File",
+                                data=f,
+                                file_name=output_path,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                        st.success(f"✅ Exported to {output_path}")
+                        st.session_state.show_export_dialog = False
+                    except Exception as e:
+                        st.error(f"Export failed: {e}")
+
+                if cancel_btn:
+                    st.session_state.show_export_dialog = False
+                    st.rerun()
+
+        st.markdown("---")
+        st.subheader(preview_title)
+        for message in debug_messages:
+            st.write(message)
+
         st.markdown("### 🔍 Debug Information")
 
-        # Summary metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Uploaded Entries", len(schedule_mgr.state.uploaded_entries))
@@ -1921,7 +1919,6 @@ with tabs[9]:
                 first_entry = schedule_mgr.state.generated_entries[0]
                 st.caption(f"First Generated:\n{first_entry.employee_name}, {first_entry.start_date}")
 
-        # Expandable debug sections
         with st.expander("🛠 Debug Event Log", expanded=False):
             if st.session_state.debug_events:
                 for entry in reversed(st.session_state.debug_events[-30:]):
