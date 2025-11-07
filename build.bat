@@ -23,7 +23,7 @@ REM Install/upgrade dependencies
 echo Installing dependencies...
 pip install -q --upgrade pip
 pip install -q -r requirements.txt
-pip install -q pyinstaller pillow
+pip install -q pyinstaller pillow pywebview
 echo.
 
 REM Clean previous builds
@@ -43,11 +43,13 @@ if exist "dist\AI_Shift_Studio.exe" (
     echo BUILD SUCCESSFUL!
     echo ========================================
     echo.
-    echo The executable is located at:
+    echo The single-file executable is located at:
     echo   dist\AI_Shift_Studio.exe
     echo.
-    echo You can now distribute the entire 'dist' folder
-    echo or create an installer using Inno Setup.
+    echo This is a STANDALONE executable - just copy and run it!
+    echo No need to distribute any other files.
+    echo.
+    echo Note: First startup may be slower as files are extracted.
     echo.
 ) else (
     echo ========================================

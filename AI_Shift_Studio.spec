@@ -1,9 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
 PyInstaller spec file for AI Shift Studio
+Creates a single-file standalone executable
 """
 
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
 block_cipher = None
+
+# Collect Streamlit data files
+streamlit_data = collect_data_files('streamlit')
+webview_data = collect_data_files('webview', include_py_files=True)
 
 # Collect all Python files
 a = Analysis(
@@ -24,7 +31,7 @@ a = Analysis(
         ('prompt_templates.py', '.'),
         ('assets/icon.png', 'assets'),
         ('assets/icon.ico', 'assets'),
-    ],
+    ] + streamlit_data + webview_data,
     hiddenimports=[
         'streamlit',
         'streamlit.runtime',
@@ -32,6 +39,7 @@ a = Analysis(
         'streamlit.runtime.scriptrunner.script_runner',
         'streamlit.web',
         'streamlit.web.cli',
+        'streamlit.web.bootstrap',
         'pandas',
         'openpyxl',
         'requests',
@@ -48,7 +56,14 @@ a = Analysis(
         'pyarrow',
         'tzdata',
         'zoneinfo',
-    ],
+        'webview',
+        'webview.platforms',
+        'webview.platforms.winforms',
+        'pythonnet',
+        'clr_loader',
+        'bottle',
+        'proxy_tools',
+    ] + collect_submodules('streamlit'),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -75,7 +90,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # Set to False to hide console window
+    console=False,  # Hide console window for native app
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
