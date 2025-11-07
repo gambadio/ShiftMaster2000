@@ -21,7 +21,7 @@ echo.
 
 REM Install/upgrade dependencies
 echo Installing dependencies...
-pip install -q --upgrade pip
+
 pip install -q -r requirements.txt
 pip install -q pyinstaller pillow pywebview
 echo.
