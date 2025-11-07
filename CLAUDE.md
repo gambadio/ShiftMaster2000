@@ -29,7 +29,7 @@ The structure file provides a comprehensive map of the entire codebase with exac
 
 ## Project Overview
 
-**Shift Prompt Studio** is a Streamlit application for creating bulletproof system prompts for LLM-driven shift planning. It manages employees, shift templates, scheduling rules, and compiles comprehensive prompts that can be tested against OpenAI-compatible APIs.
+**AI Shift Studio** is a Streamlit application for AI-powered shift planning with Microsoft Teams integration. It manages employees, shift templates, scheduling rules, and uses LLMs to generate optimized schedules that can be directly imported into Microsoft Teams Shifts.
 
 ## Development Setup
 

@@ -1,5 +1,5 @@
 """
-Calendar Preview Component for Shift Prompt Studio
+Calendar Preview Component for AI Shift Studio
 
 Displays schedule in a Teams Shifts-style calendar view
 """

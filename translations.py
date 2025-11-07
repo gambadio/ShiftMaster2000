@@ -1,13 +1,13 @@
 """
-UI Translations for Shift Prompt Studio
+UI Translations for AI Shift Studio
 """
 
 # Translation dictionaries
 TRANSLATIONS = {
     "en": {
         # General
-        "app_title": "Shift Prompt Studio",
-        "app_caption": "Microsoft Teams-compatible shift planning with AI",
+        "app_title": "AI Shift Studio",
+        "app_caption": "AI-Powered Shift Planning for Microsoft Teams",
 
         # Sidebar
         "project_name": "Project name",
@@ -231,8 +231,8 @@ TRANSLATIONS = {
     },
     "de": {
         # General
-        "app_title": "Schichtplan Studio",
-        "app_caption": "Microsoft Teams-kompatible Schichtplanung mit KI",
+        "app_title": "AI Shift Studio",
+        "app_caption": "KI-gestützte Schichtplanung für Microsoft Teams",
 
         # Sidebar
         "project_name": "Projektname",
