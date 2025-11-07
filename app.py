@@ -105,6 +105,8 @@ if "last_parse_errors" not in st.session_state:
     st.session_state.last_parse_errors = []
 if "last_generation_notes" not in st.session_state:
     st.session_state.last_generation_notes = None
+if "proj_upload_key" not in st.session_state:
+    st.session_state.proj_upload_key = 0
 
 
 CHAT_FEATURE_ENABLED = False
@@ -199,7 +201,8 @@ with st.sidebar:
         st.session_state.current_file = None
 
     # Load button
-    up = st.file_uploader("Load project (.json)", type=["json"], key="proj_upload", label_visibility="collapsed")
+    upload_key = f"proj_upload_{st.session_state.proj_upload_key}"
+    up = st.file_uploader("Load project (.json)", type=["json"], key=upload_key, label_visibility="collapsed")
     if up is not None:
         try:
             data = json.load(up)
@@ -236,6 +239,9 @@ with st.sidebar:
 
             # Set current file to the loaded filename
             st.session_state.current_file = up.name
+
+            # Bump uploader key before rerun to force widget reset
+            st.session_state.proj_upload_key += 1
 
             st.success(f"✅ Loaded: {state['project'].name}")
             entries_count = len(st.session_state.schedule_manager.get_all_entries())
