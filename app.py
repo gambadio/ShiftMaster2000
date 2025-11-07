@@ -311,6 +311,41 @@ with st.sidebar:
         days = (project.planning_period.end_date - project.planning_period.start_date).days + 1
         st.metric(get_text("planning_days", lang), days)
 
+    # Help section
+    st.write("---")
+    with st.expander(get_text("help_button", lang)):
+        st.markdown(f"### {get_text('help_title', lang)}")
+
+        st.markdown(get_text("help_getting_started", lang))
+        st.markdown(get_text("help_step1", lang))
+        st.markdown(get_text("help_step2", lang))
+        st.markdown(get_text("help_step3", lang))
+        st.markdown(get_text("help_step4", lang))
+        st.markdown(get_text("help_step5", lang))
+
+        st.markdown("")  # spacing
+        st.markdown(get_text("help_importing", lang))
+        st.markdown(get_text("help_import_desc", lang))
+
+        st.markdown("")  # spacing
+        st.markdown(get_text("help_generating", lang))
+        st.markdown(get_text("help_generate_desc", lang))
+
+        st.markdown("")  # spacing
+        st.markdown(get_text("help_preview", lang))
+        st.markdown(get_text("help_preview_desc", lang))
+
+        st.markdown("")  # spacing
+        st.markdown(get_text("help_saving", lang))
+        st.markdown(get_text("help_save_desc", lang))
+
+        st.markdown("")  # spacing
+        st.markdown(get_text("help_tips", lang))
+        st.markdown(get_text("help_tip1", lang))
+        st.markdown(get_text("help_tip2", lang))
+        st.markdown(get_text("help_tip3", lang))
+        st.markdown(get_text("help_tip4", lang))
+
 # ---------------------------------------------------------
 # Tab Structure
 # ---------------------------------------------------------

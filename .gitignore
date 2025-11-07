@@ -103,6 +103,11 @@ $RECYCLE.BIN/
 # FastAPI dependency caches
 *.sqlite
 
+# PyInstaller
+*.spec.bak
+*.manifest
+*.spec~
+
 # Application specific
 data/
 logs/
@@ -110,5 +115,5 @@ logs/
 .claude/agents/commit-creator.md
 projectstructure.md
 CLAUDE.md
-CLAUDE.md
 .autosave.json
+test_save_*.json
