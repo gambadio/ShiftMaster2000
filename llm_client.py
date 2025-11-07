@@ -164,6 +164,9 @@ class LLMClient:
         if self.provider_config.provider == ProviderType.AZURE:
             model_name = self.provider_config.azure_deployment or model_name
 
+        # Check if this is a reasoning model (o1, o3, gpt-5 series)
+        is_reasoning_model = any(x in model_name.lower() for x in ['o1', 'o3', 'gpt-5'])
+
         # Handle max_tokens with fallback
         requested_max_tokens = self.config.max_tokens
         model_max_tokens = self._get_model_max_tokens(model_name)
@@ -173,16 +176,22 @@ class LLMClient:
         if actual_max_tokens < requested_max_tokens:
             print(f"Note: Requested max_tokens ({requested_max_tokens}) exceeds model limit ({model_max_tokens}). Using {actual_max_tokens}.")
 
+        # Azure requires max_completion_tokens instead of max_tokens
+        token_param_name = "max_completion_tokens" if self.provider_config.provider == ProviderType.AZURE else "max_tokens"
+
         params = {
             "model": model_name,
             "messages": messages,
-            "temperature": self.config.temperature,
-            "max_tokens": actual_max_tokens,
-            "top_p": self.config.top_p,
-            "frequency_penalty": self.config.frequency_penalty,
-            "presence_penalty": self.config.presence_penalty,
+            token_param_name: actual_max_tokens,
             "stream": stream,
         }
+
+        # Reasoning models don't support temperature, top_p, frequency_penalty, presence_penalty
+        if not is_reasoning_model:
+            params["temperature"] = self.config.temperature
+            params["top_p"] = self.config.top_p
+            params["frequency_penalty"] = self.config.frequency_penalty
+            params["presence_penalty"] = self.config.presence_penalty
 
         # Add optional parameters
         if self.config.seed is not None:

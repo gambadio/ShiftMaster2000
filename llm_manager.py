@@ -205,16 +205,23 @@ async def _call_azure(
         {"role": "user", "content": user_message}
     ]
 
+    # Check if this is a reasoning model (o1, o3, gpt-5 series)
+    model_name = config.provider_config.model.lower()
+    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'gpt-5'])
+
     # Build request parameters
     params: Dict[str, Any] = {
         "model": config.provider_config.azure_deployment,  # Azure uses deployment name
         "messages": messages,
-        "temperature": config.temperature,
-        "max_tokens": config.max_tokens,
-        "top_p": config.top_p,
-        "frequency_penalty": config.frequency_penalty,
-        "presence_penalty": config.presence_penalty,
+        "max_completion_tokens": config.max_tokens,  # Azure requires max_completion_tokens
     }
+
+    # Only add these parameters for non-reasoning models
+    if not is_reasoning_model:
+        params["temperature"] = config.temperature
+        params["top_p"] = config.top_p
+        params["frequency_penalty"] = config.frequency_penalty
+        params["presence_penalty"] = config.presence_penalty
 
     # Add JSON mode if requested
     if config.json_mode:
