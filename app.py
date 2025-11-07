@@ -34,37 +34,7 @@ from translations import get_text
 
 st.set_page_config(page_title="Shift Prompt Studio", page_icon="🗓️", layout="wide")
 
-# Display autosave restoration banner at the very top
-if st.session_state.get("autosave_available"):
-    col1, col2, col3 = st.columns([6, 2, 2])
-    with col1:
-        st.info(f"💾 **Autosave found** from {st.session_state.get('autosave_time', 'unknown')} - Would you like to restore it?")
-    with col2:
-        if st.button("✅ Restore", key="restore_autosave"):
-            try:
-                state = load_complete_state(st.session_state.autosave_data)
-                # Restore state
-                st.session_state.project = state["project"]
-                st.session_state.schedule_manager = ScheduleManager(state["project"])
-                if state.get("schedule_manager_state"):
-                    st.session_state.schedule_manager.project.schedule_state = state["schedule_manager_state"]
-                if state["schedule_payload"]:
-                    st.session_state.schedule_payload = state["schedule_payload"]
-                if state["generated_schedule"]:
-                    st.session_state.generated_schedule = state["generated_schedule"]
-                if state["generated_entries"]:
-                    st.session_state.generated_entries = state["generated_entries"]
-                if state["llm_conversation"]:
-                    st.session_state.llm_conversation = state["llm_conversation"]
-                st.session_state.autosave_available = False
-                st.success("✅ Autosave restored!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Failed to restore autosave: {e}")
-    with col3:
-        if st.button("❌ Ignore", key="ignore_autosave"):
-            st.session_state.autosave_available = False
-            st.rerun()
+# Display autosave restoration banner at the very top (removed - now using single save file)
 
 # ---------------------------------------------------------
 # Language options compatible with Teams Shifts
@@ -147,18 +117,34 @@ def log_debug_event(message: str) -> None:
     if len(st.session_state.debug_events) > 100:
         st.session_state.debug_events = st.session_state.debug_events[-100:]
 
-# Check for autosave file on first load
-if not st.session_state.autosave_checked and os.path.exists(".autosave.json"):
+def auto_save_if_enabled() -> None:
+    """Trigger autosave if enabled in session state."""
+    if not st.session_state.get("auto_save_enabled", False):
+        return
+
     try:
-        with open(".autosave.json", "r") as f:
-            autosave_data = json.load(f)
-            saved_at = autosave_data.get("saved_at", "unknown")
-            st.session_state.autosave_data = autosave_data
-            st.session_state.autosave_available = True
-            st.session_state.autosave_time = saved_at
-    except:
-        pass
-    st.session_state.autosave_checked = True
+        from utils import trigger_autosave
+        # Get the save filename from session state or use default
+        project = st.session_state.project
+        filename = f"{project.name.replace(' ','_').lower()}.json"
+
+        success = trigger_autosave(
+            project,
+            schedule_payload=st.session_state.get("schedule_payload"),
+            generated_schedule=st.session_state.get("generated_schedule"),
+            generated_entries=st.session_state.get("generated_entries", []),
+            llm_conversation=st.session_state.get("llm_conversation", []),
+            schedule_manager_state=st.session_state.schedule_manager.state,
+            language=st.session_state.get("language", "en"),
+            last_generated_payload=st.session_state.get("last_generated_payload"),
+            last_generation_notes=st.session_state.get("last_generation_notes"),
+            chat_session=st.session_state.get("chat_session"),
+            filename=filename
+        )
+        if success:
+            log_debug_event(f"Auto-saved to {filename}")
+    except Exception as e:
+        log_debug_event(f"Auto-save failed: {e}")
 
 project: Project = st.session_state.project
 lang = st.session_state.language
@@ -229,6 +215,14 @@ with st.sidebar:
                 st.session_state.generated_entries = state["generated_entries"]
             if state["llm_conversation"]:
                 st.session_state.llm_conversation = state["llm_conversation"]
+            if state.get("language"):
+                st.session_state.language = state["language"]
+            if state.get("last_generated_payload"):
+                st.session_state.last_generated_payload = state["last_generated_payload"]
+            if state.get("last_generation_notes"):
+                st.session_state.last_generation_notes = state["last_generation_notes"]
+            if state.get("chat_session"):
+                st.session_state.chat_session = state["chat_session"]
 
             st.success(f"✅ Loaded: {state['project'].name}")
             entries_count = len(st.session_state.schedule_manager.get_all_entries())
@@ -240,33 +234,25 @@ with st.sidebar:
 
     dl_name = st.text_input(get_text("save_as", lang), value=f"{project.name.replace(' ','_').lower()}.json")
 
-    # Option to save complete state or just project
-    save_mode = st.radio(
-        get_text("save_mode", lang),
-        [get_text("complete_state", lang), get_text("project_only", lang)],
-        help="Complete state saves everything (schedule, results, conversations). Project only saves configuration."
-    )
-
-    if st.button(get_text("save_project", lang)):
+    if st.button(get_text("save_project", lang), type="primary"):
         try:
-            if save_mode == get_text("complete_state", lang):
-                # Save complete state including schedule manager
-                save_complete_state(
-                    dl_name,
-                    project,
-                    schedule_payload=st.session_state.get("schedule_payload"),
-                    generated_schedule=st.session_state.get("generated_schedule"),
-                    generated_entries=st.session_state.get("generated_entries", []),
-                    llm_conversation=st.session_state.get("llm_conversation", []),
-                    schedule_manager_state=st.session_state.schedule_manager.state
-                )
-                entries_count = len(st.session_state.schedule_manager.get_all_entries())
-                st.success(f"✅ Complete state saved to {dl_name} ({entries_count} schedule entries)")
-                log_debug_event(f"State saved to {dl_name}: entries={entries_count}")
-            else:
-                save_project(dl_name, project)
-                st.success(f"✅ Project config saved to {dl_name}")
-                log_debug_event(f"Project-only save to {dl_name}")
+            # Always save complete state (everything)
+            save_complete_state(
+                dl_name,
+                project,
+                schedule_payload=st.session_state.get("schedule_payload"),
+                generated_schedule=st.session_state.get("generated_schedule"),
+                generated_entries=st.session_state.get("generated_entries", []),
+                llm_conversation=st.session_state.get("llm_conversation", []),
+                schedule_manager_state=st.session_state.schedule_manager.state,
+                language=st.session_state.get("language", "en"),
+                last_generated_payload=st.session_state.get("last_generated_payload"),
+                last_generation_notes=st.session_state.get("last_generation_notes"),
+                chat_session=st.session_state.get("chat_session")
+            )
+            entries_count = len(st.session_state.schedule_manager.get_all_entries())
+            st.success(f"✅ Everything saved to {dl_name} ({entries_count} schedule entries)")
+            log_debug_event(f"Complete state saved to {dl_name}: entries={entries_count}")
 
             with open(dl_name, "rb") as f:
                 st.download_button(get_text("download", lang), data=f.read(), file_name=dl_name, mime="application/json")
@@ -276,34 +262,45 @@ with st.sidebar:
 
     st.write("---")
 
-    # Auto-save and Clear State Controls
-    st.write(f"### ⚙️ State Management")
+    # Auto-save Controls
+    st.write(f"### ⚙️ Auto-Save")
 
-    # Auto-save toggle
+    # Auto-save toggle - simplified explanation
     auto_save_enabled = st.checkbox(
-        "🔄 Auto-save on changes",
+        "🔄 Auto-save after changes",
         value=st.session_state.get("auto_save_enabled", False),
-        help="Automatically save state to .autosave.json when changes are made"
+        help="Automatically save everything after making changes to employees, shifts, rules, or schedules"
     )
     st.session_state.auto_save_enabled = auto_save_enabled
 
+    if auto_save_enabled:
+        st.caption(f"📁 Auto-saving to: `{dl_name}`")
+
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("💾 Quick Save", help="Save current state to .autosave.json"):
+        if st.button("💾 Save Now", help=f"Manually save everything to {dl_name}"):
             try:
-                save_complete_state(
-                    ".autosave.json",
+                from utils import trigger_autosave
+                success = trigger_autosave(
                     project,
                     schedule_payload=st.session_state.get("schedule_payload"),
                     generated_schedule=st.session_state.get("generated_schedule"),
                     generated_entries=st.session_state.get("generated_entries", []),
                     llm_conversation=st.session_state.get("llm_conversation", []),
-                    schedule_manager_state=st.session_state.schedule_manager.state
+                    schedule_manager_state=st.session_state.schedule_manager.state,
+                    language=st.session_state.get("language", "en"),
+                    last_generated_payload=st.session_state.get("last_generated_payload"),
+                    last_generation_notes=st.session_state.get("last_generation_notes"),
+                    chat_session=st.session_state.get("chat_session"),
+                    filename=dl_name
                 )
-                st.success("✅ Auto-saved")
-                log_debug_event("Manual autosave written to .autosave.json")
+                if success:
+                    st.success(f"✅ Saved to {dl_name}")
+                    log_debug_event(f"Manual save to {dl_name}")
+                else:
+                    st.error("❌ Save failed")
             except Exception as e:
-                st.error(f"Auto-save failed: {e}")
+                st.error(f"Save failed: {e}")
 
     with col2:
         if st.button("🗑️ Clear All", help="Reset all data (employees, shifts, schedules, etc.)", type="secondary"):
@@ -537,6 +534,7 @@ with tabs[0]:
                     project.employees[existing_idx] = updated_emp
                     st.success(f"Updated {emp_name}")
                 st.session_state.selected_emp_name = emp_name
+                auto_save_if_enabled()
                 st.rerun()
 
     # Selector comes AFTER the form
@@ -565,6 +563,7 @@ with tabs[0]:
             if st.session_state.get("selected_emp_name") in to_remove:
                 st.session_state.selected_emp_name = get_text("new_employee", lang)
             st.success("Removed")
+            auto_save_if_enabled()
             st.rerun()
 
 # ---------------------------------------------------------
@@ -658,6 +657,7 @@ with tabs[1]:
                     project.shifts[existing_idx] = new_shift
                     st.success(f"Updated {sid}")
                 st.session_state.selected_shift_id = sid.strip()
+                auto_save_if_enabled()
                 st.rerun()
 
     # Selector comes AFTER the form
@@ -686,6 +686,7 @@ with tabs[1]:
             if st.session_state.get("selected_shift_id") in to_remove:
                 st.session_state.selected_shift_id = get_text("new_shift", lang)
             st.success("Removed")
+            auto_save_if_enabled()
             st.rerun()
 
 # ---------------------------------------------------------
@@ -868,7 +869,11 @@ with tabs[3]:
 
                     # Force UI refresh if employees were added
                     if needs_rerun:
+                        auto_save_if_enabled()
                         st.rerun()
+
+                    # Trigger autosave after successful import
+                    auto_save_if_enabled()
 
                 except Exception as e:
                     st.error(f"Import failed: {e}")
@@ -904,6 +909,7 @@ with tabs[3]:
 
                     st.session_state.schedule_payload = payload
                     st.success("✅ Schedule imported successfully!")
+                    auto_save_if_enabled()
 
                     st.json(payload["meta"])
 
@@ -1658,6 +1664,7 @@ with tabs[8]:
 
                             st.success(f"✅ Successfully parsed and added {len(entries)} schedule entries!")
                             st.info("📅 Navigate to the **Preview** tab to see the calendar")
+                            auto_save_if_enabled()
                         except Exception as e:
                             st.session_state.last_parse_errors = parse_errors
                             st.session_state.last_generation_notes = notes

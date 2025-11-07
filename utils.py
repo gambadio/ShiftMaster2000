@@ -81,26 +81,37 @@ def save_complete_state(
     generated_schedule: Optional[Dict[str, Any]] = None,
     generated_entries: Optional[List[Any]] = None,
     llm_conversation: Optional[List[Dict[str, Any]]] = None,
-    schedule_manager_state: Optional[Any] = None
+    schedule_manager_state: Optional[Any] = None,
+    language: str = "en",
+    last_generated_payload: Optional[Dict[str, Any]] = None,
+    last_generation_notes: Optional[str] = None,
+    chat_session: Optional[Any] = None
 ) -> None:
     """
-    Save complete application state including:
-    - Project configuration (employees, shifts, rules, LLM config)
+    Save complete application state including ALL configurable data:
+    - Project configuration (employees, shifts, rules, LLM config, planning period)
     - Schedule manager state (uploaded/generated entries, conflicts)
-    - Imported schedule data (schedule_payload)
-    - Generated schedule output
-    - Generated schedule entries
+    - Imported schedule data (schedule_payload with members, past/future entries)
+    - Generated schedule output (raw LLM output)
+    - Generated schedule entries (parsed entries)
     - LLM conversation history
+    - User preferences (language)
+    - Last generation metadata
+    - Chat session state
     """
     state = {
-        "version": "2.0",  # Bumped version for schedule manager support
+        "version": "3.0",  # Bumped version for comprehensive state support
         "saved_at": datetime.now().isoformat(),
         "project": project.model_dump(),
         "schedule_payload": schedule_payload,
         "generated_schedule": generated_schedule,
         "generated_entries": [e.model_dump() if hasattr(e, 'model_dump') else e for e in (generated_entries or [])],
         "llm_conversation": llm_conversation or [],
-        "schedule_manager_state": schedule_manager_state.model_dump() if schedule_manager_state and hasattr(schedule_manager_state, 'model_dump') else None
+        "schedule_manager_state": schedule_manager_state.model_dump() if schedule_manager_state and hasattr(schedule_manager_state, 'model_dump') else None,
+        "language": language,
+        "last_generated_payload": last_generated_payload,
+        "last_generation_notes": last_generation_notes,
+        "chat_session": chat_session.model_dump() if chat_session and hasattr(chat_session, 'model_dump') else None
     }
 
     # Serialize dates
@@ -121,11 +132,12 @@ def load_complete_state(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Load complete application state from dict.
     Returns dict with keys: project, schedule_payload, generated_schedule, generated_entries,
-    llm_conversation, schedule_manager_state
+    llm_conversation, schedule_manager_state, language, last_generated_payload,
+    last_generation_notes, chat_session
     """
     # Check if this is a complete state file
     if "version" in data and "project" in data:
-        from models import ScheduleEntry, ScheduleState, GeneratedScheduleEntry
+        from models import ScheduleEntry, ScheduleState, GeneratedScheduleEntry, ChatSession
 
         # Convert generated_entries back to ScheduleEntry objects
         generated_entries = []
@@ -144,13 +156,25 @@ def load_complete_state(data: Dict[str, Any]) -> Dict[str, Any]:
             except:
                 pass  # Fall back to None if invalid
 
+        # Restore chat session if present (v3.0+)
+        chat_session = None
+        if data.get("chat_session"):
+            try:
+                chat_session = ChatSession.model_validate(data["chat_session"])
+            except:
+                pass  # Fall back to None if invalid
+
         return {
             "project": Project.model_validate(data["project"]),
             "schedule_payload": data.get("schedule_payload"),
             "generated_schedule": data.get("generated_schedule"),
             "generated_entries": generated_entries,
             "llm_conversation": data.get("llm_conversation", []),
-            "schedule_manager_state": schedule_manager_state
+            "schedule_manager_state": schedule_manager_state,
+            "language": data.get("language", "en"),
+            "last_generated_payload": data.get("last_generated_payload"),
+            "last_generation_notes": data.get("last_generation_notes"),
+            "chat_session": chat_session
         }
     else:
         # Old format - just project
@@ -160,8 +184,51 @@ def load_complete_state(data: Dict[str, Any]) -> Dict[str, Any]:
             "generated_schedule": None,
             "generated_entries": [],
             "llm_conversation": [],
-            "schedule_manager_state": None
+            "schedule_manager_state": None,
+            "language": "en",
+            "last_generated_payload": None,
+            "last_generation_notes": None,
+            "chat_session": None
         }
+
+# ----------------------------
+# Auto-save helper
+# ----------------------------
+def trigger_autosave(
+    project: Project,
+    schedule_payload: Optional[Dict[str, Any]] = None,
+    generated_schedule: Optional[Dict[str, Any]] = None,
+    generated_entries: Optional[List[Any]] = None,
+    llm_conversation: Optional[List[Dict[str, Any]]] = None,
+    schedule_manager_state: Optional[Any] = None,
+    language: str = "en",
+    last_generated_payload: Optional[Dict[str, Any]] = None,
+    last_generation_notes: Optional[str] = None,
+    chat_session: Optional[Any] = None,
+    filename: str = "project_data.json"
+) -> bool:
+    """
+    Trigger autosave of complete application state to default filename.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        save_complete_state(
+            filename,
+            project,
+            schedule_payload=schedule_payload,
+            generated_schedule=generated_schedule,
+            generated_entries=generated_entries,
+            llm_conversation=llm_conversation,
+            schedule_manager_state=schedule_manager_state,
+            language=language,
+            last_generated_payload=last_generated_payload,
+            last_generation_notes=last_generation_notes,
+            chat_session=chat_session
+        )
+        return True
+    except Exception as e:
+        print(f"Autosave failed: {e}")
+        return False
 
 # ----------------------------
 # Prompt compiler

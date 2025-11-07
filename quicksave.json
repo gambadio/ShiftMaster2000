@@ -1,0 +1,918 @@
+{
+  "version": "2.0",
+  "saved_at": "2025-10-28T12:00:00.000000",
+  "project": {
+    "name": "Shift Planning Rules - Complete Configuration",
+    "version": "2.0",
+    "employees": [
+      {
+        "id": "emp_bryan_vega",
+        "name": "Bryan Vega",
+        "email": "bryan.vega@mgb.ch",
+        "percent": 80,
+        "roles": ["Contact Team", "Dispatcher", "Lehrlingsbetreuer", "Dispatcher WoVe"],
+        "languages": ["German"],
+        "earliest_start": "07:00",
+        "latest_end": "17:45",
+        "weekday_blockers": {
+          "Friday": "Full day school"
+        },
+        "shift_time_preferences": [
+          "Monday to Thursday: 7-8am shifts only (home office on Tuesday)",
+          "Available for 7 or 8 hour shifts Monday-Thursday",
+          "School at 17:45 - must finish before",
+          "Friday: Full day school - not available"
+        ],
+        "hard_constraints": [
+          "Only Monday to Thursday, 7 or 8 hour shift",
+          "Tuesday must be home office",
+          "School at 17:45, must finish before",
+          "Friday full day in school - unavailable",
+          "From February: Lehrlingsbetreuer Schicht"
+        ],
+        "soft_preferences": [
+          "Pikett SOB available"
+        ],
+        "tags": ["Lehrling", "Betreuer"],
+        "group": "Contact Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_kosta",
+        "name": "Kosta",
+        "email": "kosta@mgb.ch",
+        "percent": 80,
+        "roles": ["Contact Team", "SOB"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {
+          "Tuesday": "Full day - School"
+        },
+        "shift_time_preferences": [],
+        "hard_constraints": [
+          "80% SOB - Tuesday off due to school"
+        ],
+        "soft_preferences": [
+          "Pikett SOB available"
+        ],
+        "tags": [],
+        "group": "SOB Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_rafi_martins",
+        "name": "Rafi Martins",
+        "email": "rafael.martins@mgb.ch",
+        "percent": 40,
+        "roles": ["Contact Team", "SOB Lead", "Techbar"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [
+          "Monday and Wednesday mornings",
+          "Friday full day"
+        ],
+        "hard_constraints": [
+          "Only 40% - Contact Team only",
+          "Available: Monday morning, Wednesday morning, Friday full day",
+          "Techbar: Tuesday-Thursday 09:00-11:30 onsite, afternoon at normal desk for SD"
+        ],
+        "soft_preferences": [
+          "Pikett SOB available"
+        ],
+        "tags": ["SOB Lead"],
+        "group": "Contact Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_carmen_fanger",
+        "name": "Carmen Fanger",
+        "email": "carmen.fanger@mgb.ch",
+        "percent": 80,
+        "roles": ["IT Redakteurin", "PCV Wove", "Projekt M-Industrie"],
+        "languages": ["German"],
+        "earliest_start": "07:00",
+        "latest_end": null,
+        "weekday_blockers": {
+          "Tuesday": "Off"
+        },
+        "shift_time_preferences": [
+          "7 hour shift Monday-Thursday"
+        ],
+        "hard_constraints": [
+          "80% IT Redakteurin or PCV Wove",
+          "7 hour shift Monday-Thursday",
+          "Tuesday off",
+          "Projekt M-Industrie at 7am"
+        ],
+        "soft_preferences": [],
+        "tags": ["IT Redakteurin"],
+        "group": "Special Roles",
+        "teams_color": null
+      },
+      {
+        "id": "emp_markus_baenninger",
+        "name": "Markus Bänninger",
+        "email": "markus.baenninger@mgb.ch",
+        "percent": 100,
+        "roles": ["Operation Lead", "PCV Wove"],
+        "languages": ["German"],
+        "earliest_start": "07:00",
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [
+          "7 hour shift"
+        ],
+        "hard_constraints": [
+          "100% Operation Lead or PCV Wove",
+          "7 hour shift",
+          "Always at 7am"
+        ],
+        "soft_preferences": [],
+        "tags": ["Lead"],
+        "group": "Leadership",
+        "teams_color": null
+      },
+      {
+        "id": "emp_doris",
+        "name": "Doris",
+        "email": "doris@mgb.ch",
+        "percent": 80,
+        "roles": ["People Developer"],
+        "languages": ["German"],
+        "earliest_start": "08:00",
+        "latest_end": null,
+        "weekday_blockers": {
+          "Tuesday": "Off"
+        },
+        "shift_time_preferences": [
+          "8 hour shift"
+        ],
+        "hard_constraints": [
+          "80% People Developer",
+          "8 hour shift",
+          "Tuesday off"
+        ],
+        "soft_preferences": [],
+        "tags": ["People Developer"],
+        "group": "Special Roles",
+        "teams_color": null
+      },
+      {
+        "id": "emp_marcel_buerki",
+        "name": "Marcel Bürki",
+        "email": "marcel.buerki@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "Dispatcher", "Dispatcher WoVe", "Spätschicht"],
+        "languages": ["German"],
+        "earliest_start": "07:00",
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [],
+        "hard_constraints": [
+          "100% Contact Team or Dispatcher",
+          "Week of Oct 6-11: 7am shift assigned"
+        ],
+        "soft_preferences": [
+          "Pikett available"
+        ],
+        "tags": ["Dispatcher WoVe"],
+        "group": "Dispatcher Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_nico_grusovin",
+        "name": "Nico Grusovin",
+        "email": "nico.grusovin@mgb.ch",
+        "percent": 100,
+        "roles": ["SOB Lead", "People Developer"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [],
+        "hard_constraints": [
+          "100% SOB Lead and People Developer",
+          "50% People Developer / 50% SOB",
+          "From January: People Developer / Stellvertretung"
+        ],
+        "soft_preferences": [
+          "Pikett SOB available"
+        ],
+        "tags": ["SOB Lead", "People Developer"],
+        "group": "SOB Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_francis_gunzinger",
+        "name": "Francis Gunzinger",
+        "email": "francis.gunzinger@mgb.ch",
+        "percent": 60,
+        "roles": ["Contact Team", "Werkstudent", "Techbar"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {
+          "Thursday": "Unavailable",
+          "Friday": "Unavailable"
+        },
+        "shift_time_preferences": [
+          "Monday to Wednesday only"
+        ],
+        "hard_constraints": [
+          "60% Werkstudent",
+          "Contact Team Monday to Wednesday only",
+          "Techbar: Tuesday-Thursday 09:00-11:30 onsite, afternoon at normal desk for SD"
+        ],
+        "soft_preferences": [],
+        "tags": ["Werkstudent"],
+        "group": "Contact Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_elmir",
+        "name": "Elmir",
+        "email": "elmir@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "Dispatcher", "Lehrlingsbetreuer", "Spätschicht", "Techbar"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [],
+        "hard_constraints": [
+          "100% Contact Team and Dispatcher",
+          "Lehrlingsbetreuer",
+          "Prefers more Dispatcher assignments",
+          "Techbar: Tuesday-Thursday 09:00-11:30 onsite, afternoon at normal desk for SD"
+        ],
+        "soft_preferences": [
+          "Pikett available"
+        ],
+        "tags": ["Lehrlingsbetreuer"],
+        "group": "Dispatcher Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_markus_koenig",
+        "name": "Markus König",
+        "email": "markus.koenig@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "Dispatcher", "Spätschicht"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [],
+        "hard_constraints": [
+          "100% Contact Team and Dispatcher",
+          "Week of Oct 4: NO Pikett",
+          "On meeting days: must have 8am shift"
+        ],
+        "soft_preferences": [
+          "Pikett available"
+        ],
+        "tags": [],
+        "group": "Dispatcher Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_ricardo_kupper",
+        "name": "Ricardo Kupper",
+        "email": "ricardo.kupper@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "Dispatcher", "Techbar", "Spätschicht"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [],
+        "hard_constraints": [
+          "100% Contact Team and Dispatcher",
+          "Techbar: Tuesday-Thursday 09:00-11:30 onsite, afternoon at normal desk for SD"
+        ],
+        "soft_preferences": [],
+        "tags": [],
+        "group": "Dispatcher Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_peter_langjahr",
+        "name": "Peter Langjahr",
+        "email": "peter.langjahr@mgb.ch",
+        "percent": 100,
+        "roles": ["SOB", "SOB Dispatcher", "SOB Backup", "SOB Wove"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [],
+        "hard_constraints": [
+          "100% SOB",
+          "SOB Dispatcher and SOB Backup"
+        ],
+        "soft_preferences": [
+          "Pikett SOB available"
+        ],
+        "tags": [],
+        "group": "SOB Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_marko_majic",
+        "name": "Marko Majic",
+        "email": "marko.majic@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "Dispatcher", "Spätschicht"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [],
+        "hard_constraints": [
+          "100% Contact Team and Dispatcher",
+          "On meeting days: must have 8am shift",
+          "November: more assignments for Marco"
+        ],
+        "soft_preferences": [
+          "Pikett available"
+        ],
+        "tags": [],
+        "group": "Dispatcher Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_ilyes",
+        "name": "Ilyes",
+        "email": "ilyes@mgb.ch",
+        "percent": 60,
+        "roles": ["Contact Team", "Dispatcher", "Spätschicht"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {
+          "Thursday": "40% Agile Team",
+          "Friday": "40% Agile Team"
+        },
+        "shift_time_preferences": [],
+        "hard_constraints": [
+          "100% Contact Team and Dispatcher",
+          "60% with us, 40% Agile Team starting October",
+          "September: 60% with us, 60% Agile from October",
+          "Thursday and Friday: Agile Team"
+        ],
+        "soft_preferences": [
+          "Pikett available"
+        ],
+        "tags": [],
+        "group": "Dispatcher Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_marco_mouchinho",
+        "name": "Marco Mouchinho",
+        "email": "marco.mouchinho@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "Dispatcher", "SOB Dispatcher", "Techbar"],
+        "languages": ["German"],
+        "earliest_start": "07:00",
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [
+          "7 or 8 hour shifts due to school"
+        ],
+        "hard_constraints": [
+          "100% Contact Team and Dispatcher",
+          "7 or 8 hour shifts due to school",
+          "NO Pikett",
+          "November: more assignments for Marco",
+          "In SOB as Dispatcher (not yet WoVe)",
+          "Techbar: Tuesday-Thursday 09:00-11:30 onsite, afternoon at normal desk for SD"
+        ],
+        "soft_preferences": [],
+        "tags": [],
+        "group": "Dispatcher Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_tino_pivetta",
+        "name": "Tino Pivetta",
+        "email": "tino.pivetta@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "SOB", "SOB Wove", "SOB Backup", "Spätschicht"],
+        "languages": ["German"],
+        "earliest_start": "09:00",
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [
+          "9 or 10 hour shift",
+          "SOB Wove and SOB Backup"
+        ],
+        "hard_constraints": [
+          "100% Contact Team and SOB",
+          "9 or 10 hour shift",
+          "Week of Oct 10: NO Pikett",
+          "November: more assignments for Tino"
+        ],
+        "soft_preferences": [
+          "Pikett SOB available"
+        ],
+        "tags": [],
+        "group": "SOB Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_roli_schaerer",
+        "name": "Roli Schärer",
+        "email": "roli.schaerer@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "Dispatcher", "Techbar", "Spätschicht"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [],
+        "hard_constraints": [
+          "100% Contact Team and Dispatcher",
+          "Techbar: Tuesday-Thursday 09:00-11:30 onsite, afternoon at normal desk for SD"
+        ],
+        "soft_preferences": [
+          "Pikett available"
+        ],
+        "tags": [],
+        "group": "Dispatcher Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_gabriel_schaeueblin",
+        "name": "Gabriel Schäublin",
+        "email": "gabriel.schaeueblin@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "Dispatcher", "Spätschicht"],
+        "languages": ["German"],
+        "earliest_start": "09:00",
+        "latest_end": null,
+        "weekday_blockers": {
+          "Monday": "Not available",
+          "Thursday": "Not available",
+          "Saturday": "Not available"
+        },
+        "shift_time_preferences": [
+          "9am shift due to long commute from Basel",
+          "Tuesday, Wednesday, Friday only"
+        ],
+        "hard_constraints": [
+          "100% Contact Team and Dispatcher",
+          "9am shift due to long commute from Basel",
+          "Available: Tuesday, Wednesday, Friday"
+        ],
+        "soft_preferences": [
+          "Pikett available"
+        ],
+        "tags": [],
+        "group": "Dispatcher Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_mike_wipraechtiger",
+        "name": "Mike Wiprächtiger",
+        "email": "michael.wipraechtiger@mgb.ch",
+        "percent": 100,
+        "roles": ["PCV Wove", "Dispatcher", "SOB", "Techbar", "SOB Wove"],
+        "languages": ["German"],
+        "earliest_start": "08:00",
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [
+          "8 hour shift"
+        ],
+        "hard_constraints": [
+          "100% PCV Wove, Dispatcher and SOB",
+          "8 hour shift",
+          "Techbar: Tuesday-Thursday 09:00-11:30 onsite, afternoon at normal desk for SD"
+        ],
+        "soft_preferences": [
+          "Pikett SOB available"
+        ],
+        "tags": [],
+        "group": "Multi-role",
+        "teams_color": null
+      },
+      {
+        "id": "emp_lili",
+        "name": "Lili",
+        "email": "lili@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "MIND Dispatching"],
+        "languages": ["German"],
+        "earliest_start": "07:00",
+        "latest_end": "17:00",
+        "weekday_blockers": {},
+        "shift_time_preferences": [
+          "Pontica 100% Contact Team 7 and 8am, 9am also ok",
+          "MIND Dispatching 8-17"
+        ],
+        "hard_constraints": [
+          "Pontica starting October 1, 2025",
+          "MIND Dispatching 8-17",
+          "Contact Team 7am-8am preferred, 9am also ok"
+        ],
+        "soft_preferences": [],
+        "tags": ["Pontica"],
+        "group": "Contact Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_melisa_sali",
+        "name": "Melisa Sali",
+        "email": "melisa.sali@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team"],
+        "languages": ["German"],
+        "earliest_start": "07:00",
+        "latest_end": "17:00",
+        "weekday_blockers": {},
+        "shift_time_preferences": [
+          "Pontica 100% Contact Team 7 and 8am, 9am also ok"
+        ],
+        "hard_constraints": [
+          "Pontica starting October 1, 2025",
+          "Contact Team 7am-8am preferred, 9am also ok"
+        ],
+        "soft_preferences": [],
+        "tags": ["Pontica"],
+        "group": "Contact Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_martin_nikolov",
+        "name": "Martin Nikolov",
+        "email": "martin.nikolov@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team", "MIND Contact"],
+        "languages": ["German"],
+        "earliest_start": "07:00",
+        "latest_end": "17:00",
+        "weekday_blockers": {},
+        "shift_time_preferences": [
+          "Pontica 100% Contact Team 7 and 8am, 9am also ok",
+          "MIND Contact 8-17"
+        ],
+        "hard_constraints": [
+          "Pontica starting October 1, 2025",
+          "MIND Contact 8-17",
+          "Contact Team 7am-8am preferred, 9am also ok"
+        ],
+        "soft_preferences": [],
+        "tags": ["Pontica"],
+        "group": "Contact Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_cedric",
+        "name": "Cedric Sopranetti",
+        "email": "cedric.sopranetti@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team"],
+        "languages": ["German"],
+        "earliest_start": null,
+        "latest_end": null,
+        "weekday_blockers": {
+          "Tuesday": "Morning only"
+        },
+        "shift_time_preferences": [
+          "Available all days except Tuesday (morning only)"
+        ],
+        "hard_constraints": [
+          "All days available except Tuesday (morning only)"
+        ],
+        "soft_preferences": [],
+        "tags": [],
+        "group": "Contact Team",
+        "teams_color": null
+      },
+      {
+        "id": "emp_amelia",
+        "name": "Amelia",
+        "email": "amelia@mgb.ch",
+        "percent": 100,
+        "roles": ["Contact Team"],
+        "languages": ["German"],
+        "earliest_start": "07:00",
+        "latest_end": null,
+        "weekday_blockers": {},
+        "shift_time_preferences": [
+          "Contact Team 7-8am, if needed 9am"
+        ],
+        "hard_constraints": [
+          "Contact Team 7-8am preferred, 9am if needed"
+        ],
+        "soft_preferences": [],
+        "tags": [],
+        "group": "Contact Team",
+        "teams_color": null
+      }
+    ],
+    "shifts": [
+      {
+        "id": "shift_contact_team_07",
+        "name": "Contact Team 07:00",
+        "role": "Contact Team",
+        "start_time": "07:00",
+        "end_time": "16:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 4,
+          "Tuesday": 4,
+          "Wednesday": 4,
+          "Thursday": 4,
+          "Friday": 4
+        },
+        "description": "4 Mitarbeiter ab 07:00",
+        "color": null
+      },
+      {
+        "id": "shift_contact_team_08",
+        "name": "Contact Team 08:00",
+        "role": "Contact Team",
+        "start_time": "08:00",
+        "end_time": "17:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "Alle Mitarbeiter die noch da sind werden um 08:00 eingetragen",
+        "color": null
+      },
+      {
+        "id": "shift_contact_team_09",
+        "name": "Contact Team 09:00",
+        "role": "Contact Team",
+        "start_time": "09:00",
+        "end_time": "18:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 2,
+          "Tuesday": 2,
+          "Wednesday": 2,
+          "Thursday": 2,
+          "Friday": 2
+        },
+        "description": "2 Mitarbeiter ab 09:00",
+        "color": null
+      },
+      {
+        "id": "shift_contact_team_10",
+        "name": "Contact Team 10:00",
+        "role": "Contact Team",
+        "start_time": "10:00",
+        "end_time": "19:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "1 Mitarbeiter ab 10:00",
+        "color": null
+      },
+      {
+        "id": "shift_sob_wove_08",
+        "name": "SOB Wove 08:00",
+        "role": "SOB Wove",
+        "start_time": "08:00",
+        "end_time": "17:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "1 SOB Wove 08:00 (or 07:00 if others don't have Pikett)",
+        "color": null
+      },
+      {
+        "id": "shift_sob_dispatcher_08",
+        "name": "SOB Dispatcher 08:00",
+        "role": "SOB Dispatcher",
+        "start_time": "08:00",
+        "end_time": "17:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "1 SOB Dispatcher 08:00 or 07:00 if Pikett",
+        "color": null
+      },
+      {
+        "id": "shift_sob_backup_08",
+        "name": "SOB Backup 08:00",
+        "role": "SOB Backup",
+        "start_time": "08:00",
+        "end_time": "17:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "1 SOB Backup (wenn alle da sind) 08:00 or 07:00 if Pikett",
+        "color": null
+      },
+      {
+        "id": "shift_dispatcher_lead_07",
+        "name": "Dispatcher Lead 07:00",
+        "role": "Dispatcher",
+        "start_time": "07:00",
+        "end_time": "16:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "1 Dispatcher Lead 07:00 - Responsible for Dispatcher Team, Livechat Lead, and Helpline Tickets",
+        "color": null
+      },
+      {
+        "id": "shift_dispatcher_08",
+        "name": "Dispatcher 08:00",
+        "role": "Dispatcher",
+        "start_time": "08:00",
+        "end_time": "17:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "1 Dispatcher 08:00",
+        "color": null
+      },
+      {
+        "id": "shift_dispatcher_09",
+        "name": "Dispatcher 09:00",
+        "role": "Dispatcher",
+        "start_time": "09:00",
+        "end_time": "18:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "1 Dispatcher 09:00",
+        "color": null
+      },
+      {
+        "id": "shift_dispatcher_sob",
+        "name": "SOB Dispatcher",
+        "role": "SOB Dispatcher",
+        "start_time": "08:00",
+        "end_time": "17:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "1 Dispatcher from SOB Team at 08:00",
+        "color": null
+      },
+      {
+        "id": "shift_operation_lead_07",
+        "name": "Operation Lead 07:00",
+        "role": "Operation Lead",
+        "start_time": "07:00",
+        "end_time": "16:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "Markus Bänninger - Operation Lead",
+        "color": null
+      },
+      {
+        "id": "shift_pcv_wove",
+        "name": "PCV Wove",
+        "role": "PCV Wove",
+        "start_time": "07:00",
+        "end_time": "16:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "Markus Bänninger, Mike Wiprächtiger, or Carmen Fanger",
+        "color": null
+      },
+      {
+        "id": "shift_it_redakteur",
+        "name": "IT Redakteurin",
+        "role": "IT Redakteurin",
+        "start_time": "07:00",
+        "end_time": "16:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 0,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "Carmen Fanger - IT Redakteurin",
+        "color": null
+      },
+      {
+        "id": "shift_people_developer",
+        "name": "People Developer",
+        "role": "People Developer",
+        "start_time": "08:00",
+        "end_time": "17:00",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "required_count_per_day": {
+          "Monday": 1,
+          "Tuesday": 0,
+          "Wednesday": 1,
+          "Thursday": 1,
+          "Friday": 1
+        },
+        "description": "Doris or Nico (50%)",
+        "color": null
+      },
+      {
+        "id": "shift_techbar",
+        "name": "Techbar",
+        "role": "Techbar",
+        "start_time": "09:00",
+        "end_time": "11:30",
+        "weekdays": ["Tuesday", "Wednesday", "Thursday"],
+        "required_count_per_day": {
+          "Tuesday": 1,
+          "Wednesday": 1,
+          "Thursday": 1
+        },
+        "description": "Onsite 09:00-11:30, then at normal desk - Rafi, Mike, Marco, Elmir, Roli",
+        "color": null
+      }
+    ],
+    "global_rules": {
+      "preamble": "You are a meticulous, constraint-aware shift planner for a technical support organization. Your goal is to create fair, balanced schedules that respect all hard constraints, minimize soft preference violations, and ensure adequate coverage for all roles.",
+      "narrative_rules": "# CRITICAL SCHEDULING RULES (Effective from September 9, 2024)\n\n## General Rules\n1. **Post-Vacation Pikett**: NO Pikett assignments immediately after vacation - must have at least one week gap\n2. **Migros Fest**: September 1-2: NO vacation compensation allowed\n3. **October SOB Rules**: From October onwards, NO SOB Pikett when simultaneously assigned to SOB Wove\n4. **French Speaking Coverage**: At least 1 French-speaking person per week in Dispatcher team\n\n## Team Structures & Coverage Requirements\n\n### Contact Team (Starting Sep 9, 2024)\n- **07:00**: 4 Mitarbeiter (4 employees)\n- **08:00**: All remaining available employees are registered\n- **09:00**: 2 Mitarbeiter (2 employees)\n- **10:00**: 1 Mitarbeiter (1 employee)\n\n### SOB Team (Starting Sep 9, 2024)\n- **SOB Wove**: 1 person at 08:00\n- **SOB Dispatcher**: 1 person at 08:00 (or 07:00 if Pikett duty)\n- **SOB Backup**: 1 person at 08:00 (or 07:00 if Pikett duty) - only when all team members available\n- **CRITICAL**: Pikett and Wove NEVER assigned together\n- **SOB Lead**: Rafi (Rafael Martins)\n- **SOB Roles**: Nico (50% People Developer / 50% SOB)\n\n### Dispatcher Team (Starting Sep 9, 2024)\n- **07:00**: 1 Dispatcher Lead\n- **08:00**: 1 Dispatcher\n- **09:00**: 1 Dispatcher\n- **SOB Dispatcher**: 1 Dispatcher from SOB Team at 08:00\n\n#### Dispatcher Lead Responsibilities\n- Responsible for entire Dispatcher Team coordination\n- Ensures daily Livechat Lead assignment\n- Livechat Lead ensures minimum 1 person online at all times\n- Responsible for Helpline Tickets reduction\n\n#### Livechat Tickets Definition\nTickets requiring:\n- No customer call/callback needed\n- Single-step completion possible\n- Examples: Helpline orders, MDD orders, Azure invitations\n\n### Dispatcher WoVe Team\n- Marcel Bürki\n- Markus König\n- Bryan Vega\n\n### Special Roles\n- **Operation Lead**: Markus Bänninger (always 07:00)\n- **PCV Wove**: Markus Bänninger, Mike Wiprächtiger, Carmen Fanger\n- **IT Redakteurin**: Carmen Fanger (7am shift Mon-Thu, Tuesday off)\n- **People Developer**: Doris (80%, 8am shift, Tuesday off) or Nico (50%/50% with SOB)\n\n### Techbar Schedule\n- **Days**: Tuesday - Thursday\n- **Time**: 09:00 - 11:30 (onsite), afternoon at normal desk for Service Desk work\n- **Staff**: Rafi, Mike, Marco, Elmir, Roly\n- **Assignment**: Always with Dispatcher or Backup\n\n## Individual Employee Constraints\n\n### Bryan Vega\n- Monday-Thursday only (7-8 hour shifts)\n- Tuesday: Home office mandatory\n- School at 17:45 - must finish before\n- Friday: Full day school - UNAVAILABLE\n- From February: Lehrlingsbetreuer Schicht\n\n### Kosta\n- 80% SOB\n- Tuesday: UNAVAILABLE (school)\n\n### Rafi Martins\n- 40% only - Contact Team\n- Available: Monday morning, Wednesday morning, Friday full day\n- Techbar: Tue-Thu 09:00-11:30\n\n### Carmen Fanger\n- 80% IT Redakteurin or PCV Wove\n- 7-hour shift Monday-Thursday\n- Tuesday: OFF\n- 7am: Projekt M-Industrie\n\n### Markus Bänninger\n- 100% Operation Lead or PCV Wove\n- Always 7am shift\n\n### Doris\n- 80% People Developer\n- 8am shift\n- Tuesday: OFF\n\n### Marcel Bürki\n- 100% Contact Team or Dispatcher\n- Week Oct 6-11: 7am shift assigned\n\n### Nico Grusovin\n- 100% SOB Lead and People Developer\n- 50% People Developer / 50% SOB\n- From January: People Developer / Stellvertretung\n\n### Francis Gunzinger\n- 60% Werkstudent\n- Contact Team Monday-Wednesday ONLY\n- Techbar: Tue-Thu 09:00-11:30\n\n### Elmir\n- 100% Contact Team and Dispatcher\n- Lehrlingsbetreuer\n- Prefers MORE Dispatcher assignments\n- Techbar: Tue-Thu 09:00-11:30\n\n### Markus König\n- 100% Contact Team and Dispatcher\n- Week Oct 4: NO Pikett\n- Meeting days: MUST have 8am shift\n\n### Ricardo Kupper\n- 100% Contact Team and Dispatcher\n- Techbar: Tue-Thu 09:00-11:30\n\n### Peter Langjahr\n- 100% SOB\n- SOB Dispatcher and SOB Backup\n\n### Marko Majic\n- 100% Contact Team and Dispatcher\n- Meeting days: MUST have 8am shift\n- November: More assignments\n\n### Ilyes\n- 60% with us, 40% Agile Team (from October)\n- Thursday-Friday: Agile Team (UNAVAILABLE for us)\n- September: 60% with us, 60% Agile from October\n\n### Marco Mouchinho\n- 100% Contact Team and Dispatcher\n- 7-8 hour shifts (school constraint)\n- NO Pikett\n- November: More assignments\n- In SOB as Dispatcher (NOT yet WoVe)\n- Techbar: Tue-Thu 09:00-11:30\n\n### Tino Pivetta\n- 100% Contact Team and SOB\n- 9-10 hour shifts\n- Week Oct 10: NO Pikett\n- November: More assignments\n\n### Roli Schärer\n- 100% Contact Team and Dispatcher\n- Techbar: Tue-Thu 09:00-11:30\n\n### Gabriel Schäublin\n- 100% Contact Team and Dispatcher\n- 9am shift due to long commute from Basel\n- Available: Tuesday, Wednesday, Friday ONLY\n\n### Mike Wiprächtiger\n- 100% PCV Wove, Dispatcher and SOB\n- 8am shift\n- Techbar: Tue-Thu 09:00-11:30\n\n### Pontica Team (Starting October 1, 2025)\n\n#### Lili\n- Pontica 100% Contact Team\n- MIND Dispatching 8-17\n- Contact Team: 7-8am preferred, 9am also ok\n\n#### Melisa Sali\n- Pontica 100% Contact Team\n- 7-8am preferred, 9am also ok\n\n#### Martin Nikolov\n- Pontica 100% Contact Team\n- MIND Contact 8-17\n- 7-8am preferred, 9am also ok\n\n#### Amelia\n- Contact Team 7-8am preferred, 9am if needed\n\n### Cedric Sopranetti\n- All days available\n- Tuesday: Morning only\n\n## Special Assignment Preferences\n\n### Kostadin and Elmir\n- Prefer MORE Dispatcher assignments (they enjoy it)\n\n### Marco Mouchinho\n- Assign to SOB as Dispatcher (NOT yet ready for WoVe)\n\n### Bryan Vega\n- From February: Lehrlingsbetreuer Schicht\n\n### Nico Grusovin\n- From January: People Developer / Stellvertretung\n\n## Monthly/Periodic Notes\n\n### November\n- Marco and Tino: Increase assignments\n\n## SOB Team Role Assignments (Effective May 2024)\n\n### Three SOB Shift Planner Roles:\n1. **SOB Wove**\n2. **SOB Backup**\n3. **SOB Dispatcher**\n\n### SOB Timing Rules:\n- Wove at 7am ONLY if other two (Backup/Dispatcher) have NO Pikett\n- Otherwise: adjust other SOB roles to 7am\n\n### SOB Personnel:\n- **Nico**: 50% PD, 50% SOB\n- **Raffi**: SOB Lead\n- **Pete**: SOB Dispatcher and SOB Backup\n\n## Fairness & Rotation Principles\n\n1. **Balanced Pikett Distribution**: Rotate Pikett duty fairly across eligible employees\n2. **Late Shift Fairness**: Distribute late shifts (Spätschicht) evenly\n3. **Role Variety**: When possible, give employees variety across their qualified roles\n4. **Weekday Balance**: Avoid repeatedly assigning same person to same weekday/shift combo\n5. **Workload Balance**: Ensure similar total shift counts across comparable employees\n\n## Validation Checklist\n\n### Before finalizing schedule, verify:\n- [ ] All hard constraints respected (vacation, school, availability)\n- [ ] No Pikett immediately after vacation\n- [ ] French speaker coverage in Dispatcher team each week\n- [ ] No SOB Pikett + SOB Wove overlap (from October)\n- [ ] Meeting days have 8am shifts for König/Majic\n- [ ] Techbar coverage Tue-Thu\n- [ ] All role coverage requirements met\n- [ ] Fair distribution of Pikett and late shifts\n- [ ] Special date rules respected (Oct 4 König, Oct 6-11 Marcel, Oct 10 Tino)",
+      "output_format_instructions": "Return a valid JSON schedule with the following structure:\n\n{\n  \"schedule\": {\n    \"dates\": [\"2024-10-28\", \"2024-10-29\", ...],\n    \"assignments\": [\n      {\n        \"date\": \"2024-10-28\",\n        \"employee_id\": \"emp_bryan_vega\",\n        \"employee_name\": \"Bryan Vega\",\n        \"shift_id\": \"shift_contact_team_07\",\n        \"role\": \"Contact Team\",\n        \"start_time\": \"07:00\",\n        \"end_time\": \"16:00\"\n      }\n    ],\n    \"violations\": [\n      {\n        \"type\": \"hard_constraint\" | \"soft_preference\",\n        \"employee_id\": \"emp_xxx\",\n        \"date\": \"2024-10-28\",\n        \"description\": \"Explanation of violation\"\n      }\n    ],\n    \"notes\": [\n      \"General scheduling notes\",\n      \"Coverage warnings\",\n      \"Fairness observations\"\n    ],\n    \"coverage_summary\": {\n      \"date\": {\n        \"role\": {\n          \"required\": 4,\n          \"assigned\": 4,\n          \"status\": \"complete\" | \"understaffed\" | \"overstaffed\"\n        }\n      }\n    },\n    \"fairness_metrics\": {\n      \"employee_id\": {\n        \"total_shifts\": 5,\n        \"pikett_count\": 1,\n        \"late_shifts\": 2,\n        \"weekend_shifts\": 0\n      }\n    }\n  }\n}\n\nEnsure all assignments are valid, constraints are respected, and include detailed violation reports if any constraints cannot be met.",
+      "token_budgets": {
+        "max_prompt_chars": 120000
+      }
+    },
+    "custom_data": {},
+    "llm_config": {
+      "api_base": "https://api.openai.com/v1",
+      "api_key": "",
+      "model": "gpt-4",
+      "temperature": 0.7,
+      "max_tokens": 4000
+    },
+    "planning_period": {
+      "start_date": "2024-10-28",
+      "end_date": "2024-11-03"
+    },
+    "schedule_state": {
+      "member_data": [],
+      "generated_entries": [],
+      "conflicts": [],
+      "last_generated": null,
+      "generation_notes": null
+    }
+  }
+}
