@@ -208,10 +208,15 @@ with st.sidebar:
 
             # Restore all session state
             st.session_state.project = state["project"]
-            st.session_state.schedule_manager = ScheduleManager(state["project"])
-
+            
+            # Restore schedule_manager_state BEFORE creating ScheduleManager
+            # This ensures the ScheduleManager picks up the restored state
             if state.get("schedule_manager_state"):
-                st.session_state.schedule_manager.project.schedule_state = state["schedule_manager_state"]
+                st.session_state.project.schedule_state = state["schedule_manager_state"]
+            
+            # Now create ScheduleManager - it will use the restored state from project
+            st.session_state.schedule_manager = ScheduleManager(st.session_state.project)
+            
             if state["schedule_payload"]:
                 st.session_state.schedule_payload = state["schedule_payload"]
             if state["generated_schedule"]:
