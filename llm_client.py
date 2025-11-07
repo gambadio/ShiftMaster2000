@@ -130,6 +130,12 @@ class LLMClient:
             "o1": 100000,
             "o1-mini": 65536,
             "o3-mini": 200000,
+            # Azure/OpenAI GPT-5 reasoning family (400k ctx, 272k input / 128k output per MS docs)
+            "gpt-5-pro": 400000,
+            "gpt-5-codex": 400000,
+            "gpt-5": 400000,
+            "gpt-5-mini": 400000,
+            "gpt-5-nano": 400000,
             # Anthropic models
             "claude-3-opus": 200000,
             "claude-3-sonnet": 200000,
