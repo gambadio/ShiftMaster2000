@@ -36,8 +36,8 @@ def start_streamlit_server(port, application_path):
 
     from streamlit.web import cli as stcli
 
-    # Change to application directory
-    os.chdir(application_path)
+    # Don't change directory - we want to stay in the writable data directory
+    # The application_path is only used to find app.py
 
     # Set Streamlit arguments
     sys.argv = [
@@ -75,8 +75,13 @@ def main():
         if getattr(sys, 'frozen', False):
             # When frozen, PyInstaller extracts files to sys._MEIPASS temp directory
             application_path = Path(sys._MEIPASS)
+
+            # Set working directory to user's home directory (writable)
+            # User can save files anywhere using file dialogs
+            os.chdir(Path.home())
         else:
             application_path = Path(__file__).parent
+            os.chdir(application_path)
 
         # Find a free port
         port = find_free_port()

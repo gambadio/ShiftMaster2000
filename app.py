@@ -35,6 +35,29 @@ st.set_page_config(
     layout="wide"
 )
 
+# Remove top padding/margin and unwanted UI elements
+st.markdown("""
+    <style>
+        /* Remove top padding from main block */
+        .block-container {
+            padding-top: 1rem;
+            padding-bottom: 0rem;
+        }
+        /* Remove padding from top of app */
+        header[data-testid="stHeader"] {
+            display: none;
+        }
+        /* Hide Deploy button */
+        button[data-testid="stDeployButton"] {
+            display: none;
+        }
+        /* Hide main menu (hamburger) */
+        #MainMenu {
+            display: none;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # Display autosave restoration banner at the very top (removed - now using single save file)
 
 # ---------------------------------------------------------
@@ -254,39 +277,37 @@ with st.sidebar:
     # Show current file if exists
     if st.session_state.current_file:
         st.caption(f"📁 Current file: `{st.session_state.current_file}`")
-    else:
-        st.caption("💡 No file loaded yet")
 
-    # Editable filename
-    save_filename = st.text_input(
-        "Filename",
-        value=st.session_state.current_file or f"{project.name.replace(' ','_').lower()}.json",
-        label_visibility="collapsed"
+    # Prepare data for download
+    state = {
+        "version": "3.0",
+        "saved_at": datetime.now().isoformat(),
+        "project": project.model_dump(),
+        "schedule_payload": st.session_state.get("schedule_payload"),
+        "generated_schedule": st.session_state.get("generated_schedule"),
+        "generated_entries": [e.model_dump() if hasattr(e, 'model_dump') else e for e in st.session_state.get("generated_entries", [])],
+        "llm_conversation": st.session_state.get("llm_conversation", []),
+        "schedule_manager_state": st.session_state.schedule_manager.state.model_dump() if st.session_state.schedule_manager.state and hasattr(st.session_state.schedule_manager.state, 'model_dump') else None,
+        "language": st.session_state.get("language", "en"),
+        "last_generated_payload": st.session_state.get("last_generated_payload"),
+        "last_generation_notes": st.session_state.get("last_generation_notes"),
+        "chat_session": st.session_state.get("chat_session").model_dump() if st.session_state.get("chat_session") and hasattr(st.session_state.get("chat_session"), 'model_dump') else None
+    }
+
+    from utils import _serialize_for_json, DateTimeEncoder
+    serialized = _serialize_for_json(state)
+    json_str = json.dumps(serialized, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+
+    save_filename = st.session_state.current_file or f"{project.name.replace(' ','_').lower()}.json"
+
+    st.download_button(
+        "💾 Save",
+        data=json_str,
+        file_name=save_filename,
+        mime="application/json",
+        type="primary",
+        use_container_width=True
     )
-
-    # Save button below the filename
-    if st.button("💾 Save", type="primary", use_container_width=True):
-        try:
-            # Always save complete state (everything)
-            save_complete_state(
-                save_filename,
-                project,
-                schedule_payload=st.session_state.get("schedule_payload"),
-                generated_schedule=st.session_state.get("generated_schedule"),
-                generated_entries=st.session_state.get("generated_entries", []),
-                llm_conversation=st.session_state.get("llm_conversation", []),
-                schedule_manager_state=st.session_state.schedule_manager.state,
-                language=st.session_state.get("language", "en"),
-                last_generated_payload=st.session_state.get("last_generated_payload"),
-                last_generation_notes=st.session_state.get("last_generation_notes"),
-                chat_session=st.session_state.get("chat_session")
-            )
-            st.session_state.current_file = save_filename
-            entries_count = len(st.session_state.schedule_manager.get_all_entries())
-            st.success(f"✅ Saved ({entries_count} entries)")
-            log_debug_event(f"Saved to {save_filename}: entries={entries_count}")
-        except Exception as e:
-            st.error(f"Save failed: {e}")
 
     st.write("---")
 
