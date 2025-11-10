@@ -300,7 +300,54 @@ with st.sidebar:
 
     save_filename = st.session_state.current_file or f"{project.name.replace(' ','_').lower()}.json"
 
-    st.download_button(
+    # Single Save button: always saves everything and opens OS save dialog
+    from pathlib import Path
+
+    def _select_save_path(default_name: str) -> str:
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+            initialdir = None
+            initialfile = default_name
+            if st.session_state.get("current_file"):
+                p = Path(st.session_state.current_file)
+                initialdir = str(p.parent)
+                initialfile = p.name
+            else:
+                initialdir = str((Path.home() / "AI_Shift_Studio").resolve())
+            path = filedialog.asksaveasfilename(
+                title="Save Project",
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                initialdir=initialdir,
+                initialfile=initialfile,
+            )
+            root.destroy()
+            return path or ""
+        except Exception:
+            return ""
+
+    if st.button("💾 Save", type="primary", use_container_width=True):
+        try:
+            target_path = _select_save_path(save_filename)
+            if not target_path:
+                st.info("Save cancelled")
+            else:
+                target = Path(target_path)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with open(target, "w", encoding="utf-8") as f:
+                    f.write(json_str)
+                st.session_state.current_file = str(target)
+                st.success(f"Saved to {target}")
+        except Exception as e:
+            st.error(f"Save failed: {e}")
+            st.exception(e)
+
+    if False:
+        st.download_button(
         "💾 Save",
         data=json_str,
         file_name=save_filename,

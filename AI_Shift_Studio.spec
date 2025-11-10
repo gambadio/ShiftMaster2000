@@ -89,6 +89,8 @@ a = Analysis(
         'clr_loader',
         'bottle',
         'proxy_tools',
+        'tkinter',
+        'tkinter.filedialog',
     ] + collect_submodules('streamlit'),
     hookspath=[],
     hooksconfig={},
