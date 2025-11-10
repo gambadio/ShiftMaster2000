@@ -4,13 +4,39 @@ PyInstaller spec file for AI Shift Studio
 Creates a single-file standalone executable
 """
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 block_cipher = None
 
-# Collect Streamlit data files
+# Collect Streamlit data files and metadata
 streamlit_data = collect_data_files('streamlit')
 webview_data = collect_data_files('webview', include_py_files=True)
+
+# Collect metadata for packages that check their version at runtime
+metadata_packages = [
+    'streamlit',
+    'pandas',
+    'openpyxl',
+    'pydantic',
+    'pydantic_core',
+    'anthropic',
+    'openai',
+    'altair',
+    'plotly',
+    'requests',
+    'click',
+    'tornado',
+    'validators',
+    'protobuf',
+    'pyarrow',
+]
+
+metadata_datas = []
+for package in metadata_packages:
+    try:
+        metadata_datas += copy_metadata(package)
+    except Exception:
+        pass  # Skip if package metadata not found
 
 # Collect all Python files
 a = Analysis(
@@ -31,7 +57,7 @@ a = Analysis(
         ('prompt_templates.py', '.'),
         ('assets/icon.png', 'assets'),
         ('assets/icon.ico', 'assets'),
-    ] + streamlit_data + webview_data,
+    ] + streamlit_data + webview_data + metadata_datas,
     hiddenimports=[
         'streamlit',
         'streamlit.runtime',

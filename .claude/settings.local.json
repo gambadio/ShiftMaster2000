@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(build.bat)",
+      "Bash(cmd.exe /c \"cd /d C:\\Users\\ricar\\OneDrive\\Documents\\New Coding\\ShiftMaster2000 && build.bat\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -6,18 +6,6 @@ Starts the Streamlit app in a native desktop window using webview
 
 import os
 import sys
-
-# CRITICAL: Must be at the very top before any other imports
-if __name__ == "__main__":
-    import multiprocessing
-    multiprocessing.freeze_support()
-    
-    # Prevent re-execution when frozen
-    if getattr(sys, 'frozen', False):
-        if os.environ.get('AI_SHIFT_STUDIO_RUNNING') == '1':
-            sys.exit(0)
-        os.environ['AI_SHIFT_STUDIO_RUNNING'] = '1'
-
 import threading
 import time
 import socket
@@ -34,20 +22,24 @@ def find_free_port(start_port=8501, max_tries=10):
             continue
     raise RuntimeError(f"Could not find a free port in range {start_port}-{start_port + max_tries}")
 
-def start_streamlit_thread(port):
-    """Start Streamlit server in a background thread (for frozen apps)"""
+def start_streamlit_server(port, application_path):
+    """Start Streamlit server in a background thread"""
+    # Patch Streamlit to skip signal handler setup
+    import streamlit.web.bootstrap as bootstrap
+    original_set_up_signal_handler = bootstrap._set_up_signal_handler
+
+    def patched_signal_handler(*args, **kwargs):
+        """Skip signal handler setup when in background thread"""
+        pass
+
+    bootstrap._set_up_signal_handler = patched_signal_handler
+
     from streamlit.web import cli as stcli
-    import sys
-    
-    # Get the directory where the executable/script is located
-    if getattr(sys, 'frozen', False):
-        application_path = Path(sys.executable).parent
-    else:
-        application_path = Path(__file__).parent
-    
+
+    # Change to application directory
     os.chdir(application_path)
-    
-    # Set Streamlit to use the specified port
+
+    # Set Streamlit arguments
     sys.argv = [
         "streamlit",
         "run",
@@ -56,11 +48,12 @@ def start_streamlit_thread(port):
         "--server.port", str(port),
         "--browser.gatherUsageStats", "false",
         "--server.enableCORS", "false",
-        "--server.enableXsrfProtection", "false"
+        "--server.enableXsrfProtection", "false",
+        "--global.developmentMode", "false"
     ]
-    
-    # Run Streamlit in this thread
-    sys.exit(stcli.main())
+
+    # Run Streamlit (this blocks)
+    stcli.main()
 
 def wait_for_server(port, timeout=30):
     """Wait for the Streamlit server to be ready"""
@@ -76,68 +69,67 @@ def wait_for_server(port, timeout=30):
     return False
 
 def main():
-    """Main launcher function"""
+    """Main launcher function - runs webview in main thread"""
     try:
+        # Get the directory where the app files are located
+        if getattr(sys, 'frozen', False):
+            # When frozen, PyInstaller extracts files to sys._MEIPASS temp directory
+            application_path = Path(sys._MEIPASS)
+        else:
+            application_path = Path(__file__).parent
+
         # Find a free port
         port = find_free_port()
-        
-        # Start Streamlit in a background thread
+
+        # Set environment variables for Streamlit
+        os.environ['STREAMLIT_SERVER_HEADLESS'] = 'true'
+        os.environ['STREAMLIT_BROWSER_GATHER_USAGE_STATS'] = 'false'
+
         print(f"Starting AI Shift Studio on port {port}...")
+
+        # Start Streamlit in a background thread
         streamlit_thread = threading.Thread(
-            target=start_streamlit_thread,
-            args=(port,),
+            target=start_streamlit_server,
+            args=(port, application_path),
             daemon=True
         )
         streamlit_thread.start()
-        
+
         # Wait for server to be ready
         print("Waiting for server to start...")
         if not wait_for_server(port, timeout=30):
-            print("Error: Server failed to start")
-            return
-        
+            print("\nError: Server failed to start")
+            input("\nPress Enter to exit...")
+            sys.exit(1)
+
         print("Server is ready!")
-        
-        # Try to use webview for native window, fallback to browser if not available
-        try:
-            import webview
-            print("Opening native application window...")
-            
-            # Create and show the window
-            window = webview.create_window(
-                'AI Shift Studio',
-                f'http://localhost:{port}',
-                width=1400,
-                height=900,
-                resizable=True,
-                fullscreen=False,
-                min_size=(800, 600)
-            )
-            
-            # Start the webview (this blocks until window is closed)
-            webview.start()
-            
-        except ImportError:
-            print("webview not available, opening in browser...")
-            import webbrowser
-            webbrowser.open(f'http://localhost:{port}')
-            
-            print("\nAI Shift Studio is running!")
-            print("Press Ctrl+C to stop the application.\n")
-            
-            # Keep the main thread running
-            try:
-                while streamlit_thread.is_alive():
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                pass
-        
+
+        # Open webview in the MAIN thread (required for webview to work)
+        import webview
+        print("Opening native application window...")
+
+        # Create and show the window in main thread
+        webview.create_window(
+            'AI Shift Studio',
+            f'http://localhost:{port}',
+            width=1400,
+            height=900,
+            resizable=True,
+            fullscreen=False,
+            min_size=(800, 600)
+        )
+
+        # Start webview - this MUST be in main thread and blocks until window closes
+        webview.start()
+
         print("\nShutting down...")
-        
+
     except Exception as e:
         print(f"Error starting application: {e}")
         import traceback
         traceback.print_exc()
+        input("\nPress Enter to exit...")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
