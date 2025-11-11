@@ -127,6 +127,10 @@ if "last_generation_notes" not in st.session_state:
     st.session_state.last_generation_notes = None
 if "proj_upload_key" not in st.session_state:
     st.session_state.proj_upload_key = 0
+if "last_autosave_time" not in st.session_state:
+    st.session_state.last_autosave_time = None
+if "autosave_status" not in st.session_state:
+    st.session_state.autosave_status = None
 
 
 CHAT_FEATURE_ENABLED = False
@@ -151,6 +155,7 @@ def auto_save_if_enabled() -> None:
 
     try:
         from utils import trigger_autosave
+        from pathlib import Path
         filename = st.session_state.current_file
 
         success = trigger_autosave(
@@ -167,9 +172,19 @@ def auto_save_if_enabled() -> None:
             filename=filename
         )
         if success:
-            log_debug_event(f"Auto-saved to {filename}")
+            st.session_state.last_autosave_time = datetime.now()
+            st.session_state.autosave_status = "success"
+            log_debug_event(f"✅ Auto-saved to {filename}")
+            # Show a toast notification
+            st.toast(f"✅ Auto-saved to {Path(filename).name}", icon="💾")
+        else:
+            st.session_state.autosave_status = "failed"
+            log_debug_event(f"❌ Auto-save failed for {filename}")
+            st.toast(f"❌ Auto-save failed", icon="⚠️")
     except Exception as e:
-        log_debug_event(f"Auto-save failed: {e}")
+        st.session_state.autosave_status = "error"
+        log_debug_event(f"Auto-save error: {e}")
+        st.toast(f"❌ Auto-save error: {str(e)[:50]}", icon="⚠️")
 
 project: Project = st.session_state.project
 lang = st.session_state.language
@@ -378,7 +393,24 @@ with st.sidebar:
         )
         st.session_state.auto_save_enabled = auto_save_enabled
         if auto_save_enabled:
-            st.caption(f"💾 Auto-saving to: `{st.session_state.current_file}`")
+            # Show autosave status with timestamp
+            if st.session_state.get("last_autosave_time"):
+                last_save = st.session_state.last_autosave_time.strftime("%H:%M:%S")
+                time_diff = (datetime.now() - st.session_state.last_autosave_time).total_seconds()
+                
+                # Show status indicator based on time and status
+                if time_diff < 5:  # Show for 5 seconds after autosave
+                    if st.session_state.get("autosave_status") == "success":
+                        st.success(f"✅ Auto-saved at {last_save}")
+                    elif st.session_state.get("autosave_status") == "failed":
+                        st.error(f"❌ Auto-save failed at {last_save}")
+                    elif st.session_state.get("autosave_status") == "error":
+                        st.error(f"❌ Auto-save error at {last_save}")
+                else:
+                    # After 5 seconds, just show the caption
+                    st.caption(f"💾 Auto-saving to: `{st.session_state.current_file}` | Last saved: {last_save}")
+            else:
+                st.caption(f"💾 Auto-saving to: `{st.session_state.current_file}`")
     else:
         st.checkbox(
             "🔄 Auto-save after changes",
@@ -528,6 +560,14 @@ def clear_employee_form_keys():
     """Clear all employee form widget keys from session state"""
     form_keys = ["emp_roles", "emp_languages", "emp_hard", "emp_soft"]
     form_keys.extend([f"blk_{wd}" for wd in ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]])
+    for key in form_keys:
+        if key in st.session_state:
+            del st.session_state[key]
+
+def clear_shift_form_keys():
+    """Clear all shift form widget keys from session state"""
+    form_keys = ["shift_weekdays", "shift_concurrent"]
+    form_keys.extend([f"req_{wd}" for wd in ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]])
     for key in form_keys:
         if key in st.session_state:
             del st.session_state[key]
@@ -779,13 +819,15 @@ with tabs[1]:
             color_code = selected_color.split(".")[0]
 
         weekdays = st.multiselect(get_text("weekdays", lang), ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-            default=current_shift.weekdays if current_shift else ["Mon","Tue","Wed","Thu","Fri"])
+            default=current_shift.weekdays if current_shift else ["Mon","Tue","Wed","Thu","Fri"],
+            key="shift_weekdays")
 
         # Concurrent shifts
         other_shifts = [s.id for s in project.shifts if s.id != (current_shift.id if current_shift else "")]
         concurrent = st.multiselect(get_text("concurrent_shifts", lang),
             options=other_shifts,
-            default=current_shift.concurrent_shifts if current_shift else [])
+            default=current_shift.concurrent_shifts if current_shift else [],
+            key="shift_concurrent")
 
         st.markdown(f"**{get_text('per_weekday_headcount', lang)}**")
         cols = st.columns(7)
@@ -841,6 +883,29 @@ with tabs[1]:
     # Update session state when selector changes
     if selected_shift_id != st.session_state.get("selected_shift_id"):
         st.session_state.selected_shift_id = selected_shift_id
+        
+        # Determine the newly selected shift
+        if selected_shift_id == get_text("new_shift", lang):
+            new_shift = None
+        else:
+            new_shift = next((s for s in project.shifts if s.id == selected_shift_id), None)
+        
+        # Clear all form widget keys to force reload with new shift data
+        clear_shift_form_keys()
+        
+        # Pre-populate widget values for the new shift to ensure they update
+        if new_shift:
+            st.session_state.shift_weekdays = new_shift.weekdays
+            st.session_state.shift_concurrent = new_shift.concurrent_shifts
+            for wd in ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:
+                st.session_state[f"req_{wd}"] = new_shift.required_count.get(wd, 0)
+        else:
+            # New shift - set defaults
+            st.session_state.shift_weekdays = ["Mon","Tue","Wed","Thu","Fri"]
+            st.session_state.shift_concurrent = []
+            for wd in ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:
+                st.session_state[f"req_{wd}"] = 0
+        
         st.rerun()
 
     if project.shifts:

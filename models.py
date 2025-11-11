@@ -61,13 +61,10 @@ class Employee(BaseModel):
     earliest_start: Optional[str] = None  # "07:00"
     latest_end: Optional[str] = None      # "19:00"
     weekday_blockers: Dict[str, str] = Field(default_factory=dict)  # {"Tue": "school 7:00-12:00"}
-    shift_time_preferences: List[Tuple[str, str]] = Field(default_factory=list)  # [("07:00","16:00")]
     hard_constraints: List[str] = Field(default_factory=list)  # free-text
     soft_preferences: List[str] = Field(default_factory=list)  # free-text
-    tags: List[str] = Field(default_factory=list)
     # Teams-specific fields
     group: Optional[str] = None  # Department/team grouping
-    teams_color: Optional[str] = None  # Optional color override
 
 class ScheduleEntry(BaseModel):
     """Unified representation of shifts and time-off"""

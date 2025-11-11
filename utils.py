@@ -211,9 +211,15 @@ def trigger_autosave(
     Trigger autosave of complete application state to default filename.
     Returns True if successful, False otherwise.
     """
+    from pathlib import Path
+    
     try:
+        # Ensure the directory exists
+        file_path = Path(filename)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        
         save_complete_state(
-            filename,
+            str(file_path),
             project,
             schedule_payload=schedule_payload,
             generated_schedule=generated_schedule,
@@ -225,9 +231,18 @@ def trigger_autosave(
             last_generation_notes=last_generation_notes,
             chat_session=chat_session
         )
-        return True
+        
+        # Verify the file was written
+        if file_path.exists() and file_path.stat().st_size > 0:
+            return True
+        else:
+            print(f"Autosave verification failed: file doesn't exist or is empty")
+            return False
+            
     except Exception as e:
         print(f"Autosave failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 # ----------------------------
