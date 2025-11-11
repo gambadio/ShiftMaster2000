@@ -35,7 +35,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Remove top padding/margin and unwanted UI elements
+# Remove top padding/margin and hide deploy button
 st.markdown("""
     <style>
         /* Remove top padding from main block */
@@ -43,17 +43,13 @@ st.markdown("""
             padding-top: 1rem;
             padding-bottom: 0rem;
         }
-        /* Remove padding from top of app */
-        header[data-testid="stHeader"] {
-            display: none;
-        }
-        /* Hide Deploy button */
-        button[data-testid="stDeployButton"] {
-            display: none;
-        }
-        /* Hide main menu (hamburger) */
-        #MainMenu {
-            display: none;
+        /* Hide Deploy button - multiple selectors for compatibility */
+        button[data-testid="stDeployButton"],
+        div[data-testid="stDeployButton"],
+        button[kind="header"],
+        .stDeployButton {
+            display: none !important;
+            visibility: hidden !important;
         }
     </style>
 """, unsafe_allow_html=True)
