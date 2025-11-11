@@ -280,7 +280,7 @@ class Project(BaseModel):
 
     def as_compact_json(self) -> Dict[str, Any]:
         return {
-            "employees":[e.model_dump(exclude_none=True) for e in self.employees],
-            "shifts":[s.model_dump(exclude_none=True) for s in self.shifts],
+            "employees":[e.model_dump(mode='json', exclude_none=True) for e in self.employees],
+            "shifts":[s.model_dump(mode='json', exclude_none=True) for s in self.shifts],
             "meta":{"version": self.version, "project": self.name},
         }

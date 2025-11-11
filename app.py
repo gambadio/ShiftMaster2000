@@ -42,7 +42,7 @@ st.markdown("""
         /* Remove top padding from main block */
         .block-container {
             padding-top: 1rem;
-            padding-bottom: 0rem;
+            padding-bottom: 3rem;
         }
         /* Hide Deploy button - multiple selectors for compatibility */
         button[data-testid="stDeployButton"],
@@ -279,16 +279,16 @@ with st.sidebar:
     state = {
         "version": "3.0",
         "saved_at": datetime.now().isoformat(),
-        "project": project.model_dump(),
+        "project": project.model_dump(mode='json'),
         "schedule_payload": st.session_state.get("schedule_payload"),
         "generated_schedule": st.session_state.get("generated_schedule"),
-        "generated_entries": [e.model_dump() if hasattr(e, 'model_dump') else e for e in st.session_state.get("generated_entries", [])],
+        "generated_entries": [e.model_dump(mode='json') if hasattr(e, 'model_dump') else e for e in st.session_state.get("generated_entries", [])],
         "llm_conversation": st.session_state.get("llm_conversation", []),
-        "schedule_manager_state": st.session_state.schedule_manager.state.model_dump() if st.session_state.schedule_manager.state and hasattr(st.session_state.schedule_manager.state, 'model_dump') else None,
+        "schedule_manager_state": st.session_state.schedule_manager.state.model_dump(mode='json') if st.session_state.schedule_manager.state and hasattr(st.session_state.schedule_manager.state, 'model_dump') else None,
         "language": st.session_state.get("language", "en"),
         "last_generated_payload": st.session_state.get("last_generated_payload"),
         "last_generation_notes": st.session_state.get("last_generation_notes"),
-        "chat_session": st.session_state.get("chat_session").model_dump() if st.session_state.get("chat_session") and hasattr(st.session_state.get("chat_session"), 'model_dump') else None
+        "chat_session": st.session_state.get("chat_session").model_dump(mode='json') if st.session_state.get("chat_session") and hasattr(st.session_state.get("chat_session"), 'model_dump') else None
     }
 
     from utils import _serialize_for_json, DateTimeEncoder
@@ -678,13 +678,38 @@ with tabs[0]:
     # Update session state when selector changes
     if selected_emp_name != st.session_state.get("selected_emp_name"):
         st.session_state.selected_emp_name = selected_emp_name
+        
+        # Determine the newly selected employee
+        if selected_emp_name == get_text("new_employee", lang):
+            new_employee = None
+        else:
+            new_employee = next((e for e in project.employees if e.name == selected_emp_name), None)
+        
         # Clear all form widget keys to force reload with new employee data
         clear_employee_form_keys()
+        
+        # Pre-populate widget values for the new employee to ensure they update
+        if new_employee:
+            st.session_state.emp_roles = new_employee.roles
+            st.session_state.emp_languages = new_employee.languages
+            st.session_state.emp_hard = "\n".join(new_employee.hard_constraints)
+            st.session_state.emp_soft = "\n".join(new_employee.soft_preferences)
+            for wd in ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:
+                st.session_state[f"blk_{wd}"] = new_employee.weekday_blockers.get(wd, "")
+        else:
+            # New employee - set defaults
+            st.session_state.emp_roles = []
+            st.session_state.emp_languages = ["DE", "FR"]
+            st.session_state.emp_hard = ""
+            st.session_state.emp_soft = ""
+            for wd in ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:
+                st.session_state[f"blk_{wd}"] = ""
+        
         st.rerun()
 
     if project.employees:
         st.markdown(f"#### {get_text('current_employees', lang)}")
-        df = pd.DataFrame([e.model_dump() for e in project.employees])
+        df = pd.DataFrame([e.model_dump(mode='json') for e in project.employees])
         st.dataframe(df, use_container_width=True)
 
         # Use a mapping of name -> employee for safe deletion by ID
@@ -820,7 +845,7 @@ with tabs[1]:
 
     if project.shifts:
         st.markdown(f"#### {get_text('current_shifts', lang)}")
-        df = pd.DataFrame([s.model_dump() for s in project.shifts])
+        df = pd.DataFrame([s.model_dump(mode='json') for s in project.shifts])
         st.dataframe(df, use_container_width=True)
 
         to_remove = st.multiselect(get_text("remove_shifts", lang), [s.id for s in project.shifts])
@@ -1607,7 +1632,7 @@ with tabs[7]:
                     if session.messages:
                         st.session_state.llm_conversation.append({
                             "timestamp": datetime.now().isoformat(),
-                            "messages": [m.model_dump() for m in session.messages],
+                            "messages": [m.model_dump(mode='json') for m in session.messages],
                             "stats": {
                                 "prompt_tokens": session.total_prompt_tokens,
                                 "completion_tokens": session.total_completion_tokens,

@@ -61,7 +61,7 @@ def _serialize_for_json(obj: Any) -> Any:
         return [_serialize_for_json(item) for item in obj]
     elif hasattr(obj, 'model_dump'):
         # Pydantic model
-        return _serialize_for_json(obj.model_dump())
+        return _serialize_for_json(obj.model_dump(mode='json'))
     return obj
 
 # ----------------------------
@@ -69,7 +69,7 @@ def _serialize_for_json(obj: Any) -> Any:
 # ----------------------------
 def save_project(path: str, project: Project) -> None:
     """Save project to JSON file with date serialization"""
-    project_dict = project.model_dump()
+    project_dict = project.model_dump(mode='json')
     serialized = _serialize_for_json(project_dict)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(serialized, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
@@ -102,16 +102,16 @@ def save_complete_state(
     state = {
         "version": "3.0",  # Bumped version for comprehensive state support
         "saved_at": datetime.now().isoformat(),
-        "project": project.model_dump(),
+        "project": project.model_dump(mode='json'),
         "schedule_payload": schedule_payload,
         "generated_schedule": generated_schedule,
-        "generated_entries": [e.model_dump() if hasattr(e, 'model_dump') else e for e in (generated_entries or [])],
+        "generated_entries": [e.model_dump(mode='json') if hasattr(e, 'model_dump') else e for e in (generated_entries or [])],
         "llm_conversation": llm_conversation or [],
-        "schedule_manager_state": schedule_manager_state.model_dump() if schedule_manager_state and hasattr(schedule_manager_state, 'model_dump') else None,
+        "schedule_manager_state": schedule_manager_state.model_dump(mode='json') if schedule_manager_state and hasattr(schedule_manager_state, 'model_dump') else None,
         "language": language,
         "last_generated_payload": last_generated_payload,
         "last_generation_notes": last_generation_notes,
-        "chat_session": chat_session.model_dump() if chat_session and hasattr(chat_session, 'model_dump') else None
+        "chat_session": chat_session.model_dump(mode='json') if chat_session and hasattr(chat_session, 'model_dump') else None
     }
 
     # Serialize dates
