@@ -56,7 +56,6 @@ class Employee(BaseModel):
     id: str
     name: str
     email: Optional[str] = None  # Required for Teams export
-    percent: Optional[int] = None  # e.g., 60, 80, 100
     roles: List[str] = Field(default_factory=list)  # allowed roles
     languages: List[str] = Field(default_factory=list)
     earliest_start: Optional[str] = None  # "07:00"

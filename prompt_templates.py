@@ -86,7 +86,7 @@ You MUST return a JSON object with this EXACT structure:
 - `shared`: MUST be "1. Geteilt" (shared) or "2. Nicht freigegeben" (not shared)
 
 When you must break a rule to cover a critical shift, prefer breaking soft preferences first. If a role cannot be covered,
-explain in the top-level `notes` field. Keep total assignments per person proportional to employment percent when possible.
+explain in the top-level `notes` field. Distribute assignments fairly considering employee constraints and availability.
 
 **IMPORTANT**: Output ONLY valid JSON matching this structure. No additional text before or after the JSON.
 """

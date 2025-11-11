@@ -3,6 +3,7 @@ AI Shift Studio - AI-Powered Shift Planning
 """
 
 import json
+import platform
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
@@ -15,7 +16,7 @@ from models import (
     LLMProviderConfig, ChatSession
 )
 from utils import (
-    save_complete_state, load_complete_state,
+    load_complete_state,
     parse_dual_schedule_files,
     convert_uploaded_entries_to_schedule_entries, export_schedule_to_teams_excel,
     parse_json_response
@@ -272,7 +273,7 @@ with st.sidebar:
 
     # Show current file if exists
     if st.session_state.current_file:
-        st.caption(f"📁 Current file: `{st.session_state.current_file}`")
+        st.caption(f"📁 Loaded from: `{st.session_state.current_file}`")
 
     # Prepare data for download
     state = {
@@ -296,61 +297,71 @@ with st.sidebar:
 
     save_filename = st.session_state.current_file or f"{project.name.replace(' ','_').lower()}.json"
 
-    # Single Save button: always saves everything and opens OS save dialog
-    from pathlib import Path
+    # Platform-specific save behavior
+    is_windows = platform.system() == "Windows"
 
-    def _select_save_path(default_name: str) -> str:
-        try:
-            import tkinter as tk
-            from tkinter import filedialog
-            root = tk.Tk()
-            root.withdraw()
-            root.attributes('-topmost', True)
-            initialdir = None
-            initialfile = default_name
-            if st.session_state.get("current_file"):
-                p = Path(st.session_state.current_file)
-                initialdir = str(p.parent)
-                initialfile = p.name
-            else:
-                initialdir = str((Path.home() / "AI_Shift_Studio").resolve())
-            path = filedialog.asksaveasfilename(
-                title="Save Project",
-                defaultextension=".json",
-                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-                initialdir=initialdir,
-                initialfile=initialfile,
-            )
-            root.destroy()
-            return path or ""
-        except Exception:
-            return ""
+    if is_windows:
+        # Windows: Use native file dialog (tkinter is safe on Windows)
+        from pathlib import Path
 
-    if st.button("💾 Save", type="primary", use_container_width=True):
-        try:
-            target_path = _select_save_path(save_filename)
-            if not target_path:
-                st.info("Save cancelled")
-            else:
-                target = Path(target_path)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with open(target, "w", encoding="utf-8") as f:
-                    f.write(json_str)
-                st.session_state.current_file = str(target)
-                st.success(f"Saved to {target}")
-        except Exception as e:
-            st.error(f"Save failed: {e}")
-            st.exception(e)
+        def _select_save_path_windows(default_name: str) -> str:
+            """Windows-only file dialog using tkinter"""
+            try:
+                import tkinter as tk
+                from tkinter import filedialog
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
 
-    if False:
+                initialdir = None
+                initialfile = default_name
+                if st.session_state.get("current_file"):
+                    p = Path(st.session_state.current_file)
+                    initialdir = str(p.parent)
+                    initialfile = p.name
+                else:
+                    initialdir = str((Path.home() / "AI_Shift_Studio").resolve())
+
+                path = filedialog.asksaveasfilename(
+                    title="Save Project",
+                    defaultextension=".json",
+                    filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                    initialdir=initialdir,
+                    initialfile=initialfile,
+                )
+                root.destroy()
+                return path or ""
+            except Exception as e:
+                st.error(f"File dialog error: {e}")
+                return ""
+
+        if st.button("💾 Save", type="primary", use_container_width=True):
+            try:
+                target_path = _select_save_path_windows(save_filename)
+                if not target_path:
+                    st.info("Save cancelled")
+                else:
+                    target = Path(target_path)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with open(target, "w", encoding="utf-8") as f:
+                        f.write(json_str)
+                    st.session_state.current_file = str(target)
+                    st.success(f"✅ Saved to {target}")
+            except Exception as e:
+                st.error(f"Save failed: {e}")
+                st.exception(e)
+
+    else:
+        # macOS/Linux: Use download button (thread-safe)
         st.download_button(
-        "💾 Save",
-        data=json_str,
-        file_name=save_filename,
-        mime="application/json",
-        type="primary",
-        use_container_width=True
-    )
+            "💾 Save",
+            data=json_str,
+            file_name=save_filename,
+            mime="application/json",
+            type="primary",
+            use_container_width=True,
+            help="Download project file to your computer"
+        )
 
     st.write("---")
 
@@ -363,18 +374,20 @@ with st.sidebar:
         auto_save_enabled = st.checkbox(
             "🔄 Auto-save after changes",
             value=st.session_state.get("auto_save_enabled", False),
-            help=f"Automatically save to {st.session_state.current_file} after making changes"
+            help=f"Automatically save to working directory as '{st.session_state.current_file}' after making changes"
         )
         st.session_state.auto_save_enabled = auto_save_enabled
+        if auto_save_enabled:
+            st.caption(f"💾 Auto-saving to: `{st.session_state.current_file}`")
     else:
         st.checkbox(
             "🔄 Auto-save after changes",
             value=False,
             disabled=True,
-            help="Save or load a file first to enable auto-save"
+            help="Load a file first to enable auto-save"
         )
         st.session_state.auto_save_enabled = False
-        st.caption("💡 Load or save a file to enable auto-save")
+        st.caption("💡 Load a file to enable auto-save")
 
     st.write("---")
     st.write(f"### {get_text('quick_stats', lang)}")
@@ -509,11 +522,23 @@ tabs = st.tabs([
 ])
 
 # ---------------------------------------------------------
+# Helper function for clearing employee form widget keys
+# ---------------------------------------------------------
+def clear_employee_form_keys():
+    """Clear all employee form widget keys from session state"""
+    form_keys = ["emp_roles", "emp_languages", "emp_hard", "emp_soft"]
+    form_keys.extend([f"blk_{wd}" for wd in ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]])
+    for key in form_keys:
+        if key in st.session_state:
+            del st.session_state[key]
+
+# ---------------------------------------------------------
 # TAB 1: Employees
 # ---------------------------------------------------------
 with tabs[0]:
     st.subheader(get_text("employee_management", lang))
 
+    # Track the employee being edited by their ID (not name)
     if "editing_employee_id" not in st.session_state:
         st.session_state.editing_employee_id = None
 
@@ -527,8 +552,12 @@ with tabs[0]:
 
     if selected_emp_name == get_text("new_employee", lang):
         current_employee = None
+        st.session_state.editing_employee_id = None
     else:
         current_employee = next((e for e in project.employees if e.name == selected_emp_name), None)
+        # Store the ID of the employee we're editing
+        if current_employee:
+            st.session_state.editing_employee_id = current_employee.id
 
     # Put the form ABOVE the selector
     with st.expander(get_text("add_edit_employee", lang), expanded=True):
@@ -540,9 +569,6 @@ with tabs[0]:
             emp_group = st.text_input(get_text("group_team", lang), value=current_employee.group if current_employee else "Service Desk")
 
         with col2:
-            emp_percent = st.number_input(get_text("employment_percent", lang), 0, 200,
-                value=current_employee.percent if (current_employee and current_employee.percent) else 100)
-
             # Role inference
             if "role_options" not in st.session_state:
                 st.session_state.role_options = []
@@ -602,13 +628,18 @@ with tabs[0]:
             elif not emp_email.strip():
                 st.error("Email is required for Teams export")
             else:
-                emp_id = emp_name.lower().replace(" ","-")
+                # If we're editing an existing employee, preserve their ID
+                # Otherwise generate a new ID from the name
+                if st.session_state.editing_employee_id:
+                    emp_id = st.session_state.editing_employee_id
+                else:
+                    emp_id = emp_name.lower().replace(" ","-")
+
                 updated_emp = Employee(
                     id=emp_id,
                     name=emp_name,
                     email=emp_email,
                     group=emp_group or None,
-                    percent=int(emp_percent),
                     roles=selected_roles,
                     languages=selected_languages,
                     earliest_start=earliest or None,
@@ -618,14 +649,19 @@ with tabs[0]:
                     soft_preferences=[x.strip() for x in soft_preferences.splitlines() if x.strip()],
                 )
 
+                # Find existing employee by ID (not name!)
                 existing_idx = next((idx for idx, e in enumerate(project.employees) if e.id == emp_id), None)
                 if existing_idx is None:
+                    # New employee
                     project.employees.append(updated_emp)
                     st.success(f"Added {emp_name}")
                 else:
+                    # Update existing employee
                     project.employees[existing_idx] = updated_emp
                     st.success(f"Updated {emp_name}")
+
                 st.session_state.selected_emp_name = emp_name
+                st.session_state.editing_employee_id = emp_id
                 auto_save_if_enabled()
                 st.rerun()
 
@@ -642,6 +678,8 @@ with tabs[0]:
     # Update session state when selector changes
     if selected_emp_name != st.session_state.get("selected_emp_name"):
         st.session_state.selected_emp_name = selected_emp_name
+        # Clear all form widget keys to force reload with new employee data
+        clear_employee_form_keys()
         st.rerun()
 
     if project.employees:
@@ -649,11 +687,24 @@ with tabs[0]:
         df = pd.DataFrame([e.model_dump() for e in project.employees])
         st.dataframe(df, use_container_width=True)
 
-        to_remove = st.multiselect(get_text("remove_employees", lang), [e.name for e in project.employees])
+        # Use a mapping of name -> employee for safe deletion by ID
+        emp_name_to_obj = {e.name: e for e in project.employees}
+        to_remove_names = st.multiselect(get_text("remove_employees", lang), [e.name for e in project.employees])
+
         if st.button(get_text("remove_selected", lang)):
-            project.employees = [e for e in project.employees if e.name not in to_remove]
-            if st.session_state.get("selected_emp_name") in to_remove:
+            # Get the IDs of employees to remove
+            to_remove_ids = [emp_name_to_obj[name].id for name in to_remove_names if name in emp_name_to_obj]
+
+            # Delete by ID (not name) to avoid accidental duplicate deletion
+            project.employees = [e for e in project.employees if e.id not in to_remove_ids]
+
+            # Clear selection if the current employee was removed
+            if st.session_state.get("selected_emp_name") in to_remove_names:
                 st.session_state.selected_emp_name = get_text("new_employee", lang)
+                st.session_state.editing_employee_id = None
+                # Clear form widget keys
+                clear_employee_form_keys()
+
             st.success("Removed")
             auto_save_if_enabled()
             st.rerun()

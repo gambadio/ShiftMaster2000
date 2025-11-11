@@ -802,7 +802,6 @@ def auto_populate_employees_from_members(
                 name=name,
                 email=email,
                 roles=[],  # Will be inferred from shifts later
-                percent=100,  # Default to full-time
             )
             project.employees.append(new_emp)
             added_count += 1

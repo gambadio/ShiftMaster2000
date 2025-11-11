@@ -22,7 +22,6 @@ def test_comprehensive_save_load():
         id="emp_001",
         name="Test Employee",
         email="test@example.com",
-        percent=80,
         roles=["Support", "Admin"],
         languages=["DE", "EN"]
     )
