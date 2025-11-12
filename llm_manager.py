@@ -222,6 +222,16 @@ async def _call_azure(
         params["top_p"] = config.top_p
         params["frequency_penalty"] = config.frequency_penalty
         params["presence_penalty"] = config.presence_penalty
+    else:
+        # For reasoning models, add reasoning_effort if specified
+        # Azure GPT-5 supports: minimal, low, medium, high (default: medium)
+        if config.reasoning_effort:
+            print(f"🔍 Adding reasoning_effort for Azure: {config.reasoning_effort}")
+            params["reasoning_effort"] = config.reasoning_effort
+
+    # Add stream_options to get usage in final chunk (for streaming)
+    if config.enable_streaming:
+        params["stream_options"] = {"include_usage": True}
 
     # Add JSON mode if requested
     if config.json_mode:
@@ -295,38 +305,68 @@ async def _stream_openai_style(
     full_reasoning = []
     usage_info = {}
     model_name = params.get("model", "unknown")
+    
+    print(f"🔍 Starting stream for model: {model_name}")
+    print(f"🔍 Stream params: {list(params.keys())}")
 
-    stream = client.chat.completions.create(**params)
+    try:
+        stream = client.chat.completions.create(**params)
+        print("🔍 Stream object created successfully")
+        
+        chunk_count = 0
+        for chunk in stream:
+            chunk_count += 1
+            
+            # Debug first few chunks and every 50th chunk
+            if chunk_count <= 3 or chunk_count % 50 == 0:
+                print(f"🔍 Chunk #{chunk_count}")
+            
+            if chunk.choices:
+                delta = chunk.choices[0].delta
 
-    for chunk in stream:
-        if chunk.choices:
-            delta = chunk.choices[0].delta
+                # Handle reasoning content (for o1/o3 models and OpenRouter)
+                if hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                    full_reasoning.append(delta.reasoning_content)
+                    if on_thinking:
+                        on_thinking(delta.reasoning_content)
+                    if chunk_count <= 5:
+                        print(f"🧠 Reasoning content: {delta.reasoning_content[:100]}")
 
-            # Handle reasoning content (for o1/o3 models and OpenRouter)
-            if hasattr(delta, "reasoning_content") and delta.reasoning_content:
-                full_reasoning.append(delta.reasoning_content)
-                if on_thinking:
-                    on_thinking(delta.reasoning_content)
+                # Handle reasoning field (OpenRouter format)
+                if hasattr(delta, "reasoning") and delta.reasoning:
+                    full_reasoning.append(delta.reasoning)
+                    if on_thinking:
+                        on_thinking(delta.reasoning)
+                    if chunk_count <= 5:
+                        print(f"🧠 Reasoning field: {delta.reasoning[:100]}")
 
-            # Handle reasoning field (OpenRouter format)
-            if hasattr(delta, "reasoning") and delta.reasoning:
-                full_reasoning.append(delta.reasoning)
-                if on_thinking:
-                    on_thinking(delta.reasoning)
+                # Handle regular content
+                if hasattr(delta, "content") and delta.content:
+                    full_content.append(delta.content)
+                    if on_chunk:
+                        on_chunk(delta.content)
 
-            # Handle regular content
-            if hasattr(delta, "content") and delta.content:
-                full_content.append(delta.content)
-                if on_chunk:
-                    on_chunk(delta.content)
+            # Capture usage if available (Azure sends this in final chunk when stream_options is set)
+            if hasattr(chunk, "usage") and chunk.usage:
+                usage_info = {
+                    "input_tokens": getattr(chunk.usage, "prompt_tokens", 0),
+                    "output_tokens": getattr(chunk.usage, "completion_tokens", 0),
+                }
+                # Capture reasoning tokens if available (Azure GPT-5 format)
+                if hasattr(chunk.usage, "completion_tokens_details"):
+                    details = chunk.usage.completion_tokens_details
+                    if hasattr(details, "reasoning_tokens"):
+                        usage_info["reasoning_tokens"] = details.reasoning_tokens
+                        print(f"🔍 Reasoning tokens: {details.reasoning_tokens}")
 
-        # Capture usage if available
-        if hasattr(chunk, "usage") and chunk.usage:
-            usage_info = {
-                "input_tokens": getattr(chunk.usage, "prompt_tokens", 0),
-                "output_tokens": getattr(chunk.usage, "completion_tokens", 0),
-            }
-
+        print(f"🔍 Stream complete: {chunk_count} chunks, {len(full_content)} content pieces, {len(full_reasoning)} reasoning pieces")
+        
+    except Exception as e:
+        print(f"❌ Stream error: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+    
     return {
         "content": "".join(full_content),
         "thinking": "".join(full_reasoning) if full_reasoning else None,

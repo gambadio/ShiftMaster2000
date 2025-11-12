@@ -118,6 +118,9 @@ class LLMClient:
         """
         Get maximum supported tokens for a model.
         Returns the model's max if known, otherwise returns a high default.
+        
+        Note: For Azure models, this returns max COMPLETION tokens (output).
+        GPT-5 models have 400k context but only 128k max OUTPUT tokens.
         """
         # Known model limits (can be expanded)
         model_limits = {
@@ -130,12 +133,14 @@ class LLMClient:
             "o1": 100000,
             "o1-mini": 65536,
             "o3-mini": 200000,
-            # Azure/OpenAI GPT-5 reasoning family (400k ctx, 272k input / 128k output per MS docs)
-            "gpt-5-pro": 400000,
-            "gpt-5-codex": 400000,
-            "gpt-5": 400000,
-            "gpt-5-mini": 400000,
-            "gpt-5-nano": 400000,
+            # Azure/OpenAI GPT-5 reasoning family
+            # Important: 400k CONTEXT, but only 128k MAX OUTPUT TOKENS
+            # See: https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models
+            "gpt-5-pro": 128000,      # Max completion tokens
+            "gpt-5-codex": 128000,    # Max completion tokens
+            "gpt-5": 128000,          # Max completion tokens
+            "gpt-5-mini": 128000,     # Max completion tokens
+            "gpt-5-nano": 128000,     # Max completion tokens
             # Anthropic models
             "claude-3-opus": 200000,
             "claude-3-sonnet": 200000,

@@ -539,7 +539,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-tabs = st.tabs([
+# Create tabs - explicitly typed to help Pylance
+tabs: Any = st.tabs([
     get_text("tab_employees", lang),
     get_text("tab_shifts", lang),
     get_text("tab_rules", lang),
