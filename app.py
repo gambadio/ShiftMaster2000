@@ -793,8 +793,12 @@ with tabs[1]:
 
     if selected_shift_id == get_text("new_shift", lang):
         current_shift = None
+        st.session_state.editing_shift_id = None
     else:
         current_shift = next((s for s in project.shifts if s.id == selected_shift_id), None)
+        # Store the ID of the shift we're editing
+        if current_shift:
+            st.session_state.editing_shift_id = current_shift.id
 
     # Put the form ABOVE the selector
     with st.expander(get_text("add_edit_shift", lang), expanded=True):
@@ -859,14 +863,25 @@ with tabs[1]:
                     concurrent_shifts=concurrent,
                 )
 
-                existing_idx = next((idx for idx, sh in enumerate(project.shifts) if sh.id == sid.strip()), None)
+                # If we're editing an existing shift, use the stored editing_shift_id to find it
+                # This allows renaming the shift ID without creating a duplicate
+                if st.session_state.editing_shift_id:
+                    existing_idx = next((idx for idx, sh in enumerate(project.shifts) if sh.id == st.session_state.editing_shift_id), None)
+                else:
+                    # New shift - check if the new ID already exists
+                    existing_idx = next((idx for idx, sh in enumerate(project.shifts) if sh.id == sid.strip()), None)
+                
                 if existing_idx is None:
+                    # New shift
                     project.shifts.append(new_shift)
                     st.success(f"Added {sid}")
                 else:
+                    # Update existing shift
                     project.shifts[existing_idx] = new_shift
                     st.success(f"Updated {sid}")
+                
                 st.session_state.selected_shift_id = sid.strip()
+                st.session_state.editing_shift_id = sid.strip()
                 auto_save_if_enabled()
                 st.rerun()
 
@@ -918,6 +933,7 @@ with tabs[1]:
             project.shifts = [s for s in project.shifts if s.id not in to_remove]
             if st.session_state.get("selected_shift_id") in to_remove:
                 st.session_state.selected_shift_id = get_text("new_shift", lang)
+                st.session_state.editing_shift_id = None
             st.success("Removed")
             auto_save_if_enabled()
             st.rerun()

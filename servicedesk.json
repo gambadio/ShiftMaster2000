@@ -1,6 +1,6 @@
 {
   "version": "3.0",
-  "saved_at": "2025-11-11T17:48:42.188662",
+  "saved_at": "2025-11-12T13:31:37.764537",
   "project": {
     "name": "servicedesk",
     "version": "2.0",
@@ -53,24 +53,16 @@
         "name": "Bürki, Marcel-MGB",
         "email": "marcel.buerki@mgb.ch",
         "roles": [
-          "Contact Team"
+          "Contact Team",
+          "Dispatcher",
+          "Pikett"
         ],
-        "languages": [],
+        "languages": [
+          "DE",
+          "EN"
+        ],
         "earliest_start": "07:00",
         "latest_end": "19:00",
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_4_carè,_raffaele-mgb",
-        "name": "Carè, Raffaele-MGB",
-        "email": "raffaele.care@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -80,10 +72,17 @@
         "id": "emp_5_könig,_markus-mgb",
         "name": "König, Markus-MGB",
         "email": "markus.koenig@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Contact Team",
+          "Pikett",
+          "Dispatcher"
+        ],
+        "languages": [
+          "DE",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "19:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -93,50 +92,25 @@
         "id": "emp_6_martins,_rafael-mgb",
         "name": "Martins, Rafael-MGB",
         "email": "rafael.martins@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_7_savali,_kikoyo-mgb",
-        "name": "Savali, Kikoyo-MGB",
-        "email": "kikoyo.savali@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_8_workflows,_service_desk-group_it-mgb",
-        "name": "Workflows, Service Desk-Group IT-MGB",
-        "email": "funktionsuserm365.servicedesk@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_9_hangarter,_denise-mgb",
-        "name": "Hangarter, Denise-MGB",
-        "email": "denise.hangarter@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
+        "roles": [
+          "Contact Team",
+          "Pikett SOB"
+        ],
+        "languages": [
+          "DE",
+          "FR",
+          "EN",
+          "ES"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "19:00",
+        "weekday_blockers": {
+          "Mon": "just 08:00 - 12:30",
+          "Tue": "not working",
+          "Wed": "just 08:00 - 12:30",
+          "Thu": "not working",
+          "Fri": "full day available"
+        },
         "hard_constraints": [],
         "soft_preferences": [],
         "group": null
@@ -145,10 +119,18 @@
         "id": "emp_10_grusovin,_nico-mgb",
         "name": "Grusovin, Nico-MGB",
         "email": "nico.grusovin@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "People Developer / Stellvertretung",
+          "Pikett SOB"
+        ],
+        "languages": [
+          "DE",
+          "FR",
+          "IT",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "19:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -158,11 +140,19 @@
         "id": "emp_11_veiga,_bryan-mgb",
         "name": "Veiga, Bryan-MGB",
         "email": "bryan.veiga@mgb.ch",
-        "roles": [],
+        "roles": [
+          "Contact Team",
+          "Dispatcher",
+          "Pikett SOB",
+          "SOB Wove",
+          "SOB Backup"
+        ],
         "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
+        "earliest_start": "07:00",
+        "latest_end": "17:00",
+        "weekday_blockers": {
+          "Fri": "not working, except Pikett SOB"
+        },
         "hard_constraints": [],
         "soft_preferences": [],
         "group": null
@@ -171,23 +161,19 @@
         "id": "emp_12_mouchinho,_marco-mgb",
         "name": "Mouchinho, Marco-MGB",
         "email": "marco.mouchinho@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_13_langjahr,_peter-mgb",
-        "name": "Langjahr, Peter-MGB",
-        "email": "peter.langjahr@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Contact Team",
+          "Techbar",
+          "Pikett"
+        ],
+        "languages": [
+          "DE",
+          "FR",
+          "IT",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "17:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -197,11 +183,24 @@
         "id": "emp_14_ben_marzouk,_ilyes-mgb",
         "name": "Ben Marzouk, Ilyes-MGB",
         "email": "ilyes.benmarzouk@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
+        "roles": [
+          "Contact Team",
+          "Agile Team"
+        ],
+        "languages": [
+          "DE",
+          "FR",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "18:00",
+        "weekday_blockers": {
+          "Mon": "Contact Team",
+          "Tue": "Contact Team",
+          "Wed": "Contact Team",
+          "Thu": "just Agile Team",
+          "Fri": "just Agile Team"
+        },
         "hard_constraints": [],
         "soft_preferences": [],
         "group": null
@@ -212,10 +211,12 @@
         "email": "sven.buehlmann@mgb.ch",
         "roles": [],
         "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "earliest_start": "07:00",
+        "latest_end": "19:00",
         "weekday_blockers": {},
-        "hard_constraints": [],
+        "hard_constraints": [
+          "Doesn't need to cover any shifts."
+        ],
         "soft_preferences": [],
         "group": null
       },
@@ -223,11 +224,23 @@
         "id": "emp_16_schäublin,_gabriel-mgb",
         "name": "Schäublin, Gabriel-MGB",
         "email": "gabriel.schaeublin@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
+        "roles": [
+          "Contact Team",
+          "IT Redakteur"
+        ],
+        "languages": [
+          "DE",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "19:00",
+        "weekday_blockers": {
+          "Mon": "Contact Team",
+          "Tue": "Just IT Redakteur",
+          "Wed": "Just IT Redakteur",
+          "Thu": "Contact Team",
+          "Fri": "Just IT Redakteur"
+        },
         "hard_constraints": [],
         "soft_preferences": [],
         "group": null
@@ -236,12 +249,19 @@
         "id": "emp_17_fanger,_carmen-mgb",
         "name": "Fanger, Carmen-MGB",
         "email": "carmen.fanger@mgb.ch",
-        "roles": [],
+        "roles": [
+          "M-Industrie Projekt",
+          "IT Redakteur"
+        ],
         "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
+        "earliest_start": "07:00",
+        "latest_end": "16:00",
+        "weekday_blockers": {
+          "Fri": "not working"
+        },
+        "hard_constraints": [
+          "Currently just working the M-Industrie Projekt Role"
+        ],
         "soft_preferences": [],
         "group": null
       },
@@ -249,23 +269,22 @@
         "id": "emp_18_schärer,_roland-mgb",
         "name": "Schärer, Roland-MGB",
         "email": "roland.schaerer@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_19_gonçalves_vieira,_tiago-mgb",
-        "name": "Gonçalves Vieira, Tiago-MGB",
-        "email": "tiago.goncalves@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Dispatcher",
+          "Dispatcher Wove",
+          "Pikett SOB",
+          "SOB Backup",
+          "SOB Wove",
+          "Techbar"
+        ],
+        "languages": [
+          "DE",
+          "FR",
+          "EN",
+          "ES"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "19:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -275,10 +294,18 @@
         "id": "emp_20_hajdari,_elmir-mgb",
         "name": "Hajdari, Elmir-MGB",
         "email": "elmir.hajdari@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Dispatcher",
+          "Pikett",
+          "Techbar",
+          "Contact Team"
+        ],
+        "languages": [
+          "DE",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "19:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -288,10 +315,18 @@
         "id": "emp_21_kupper,_ricardo-mgb",
         "name": "Kupper, Ricardo-MGB",
         "email": "ricardo.kupper@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Contact Team",
+          "Dispatcher",
+          "Pikett"
+        ],
+        "languages": [
+          "DE",
+          "FR",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "19:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -301,12 +336,24 @@
         "id": "emp_22_kostadinov,_kostadin-mgb",
         "name": "Kostadinov, Kostadin-MGB",
         "email": "kostadin.kostadinov@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Contact Team",
+          "Dispatcher",
+          "Dispatcher Wove",
+          "Pikett SOB",
+          "SOB Backup",
+          "SOB Wove"
+        ],
+        "languages": [
+          "DE",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "18:00",
         "weekday_blockers": {},
-        "hard_constraints": [],
+        "hard_constraints": [
+          "Can just work till 18:00"
+        ],
         "soft_preferences": [],
         "group": null
       },
@@ -314,23 +361,17 @@
         "id": "emp_23_majic,_marko-mgb",
         "name": "Majic, Marko-MGB",
         "email": "marko.majic@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_24_sugumaran,_sukash-mgb",
-        "name": "Sugumaran, Sukash-MGB",
-        "email": "sukash.sugumaran@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Contact Team",
+          "Dispatcher"
+        ],
+        "languages": [
+          "DE",
+          "FR",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "19:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -340,23 +381,15 @@
         "id": "emp_25_achanova,_lili-mgb",
         "name": "Achanova, Lili-MGB",
         "email": "lili.achanova@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_26_sheikh,_ramisa-mgb",
-        "name": "Sheikh, Ramisa-MGB",
-        "email": "ramisa.sheikh@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Mind Dispatching"
+        ],
+        "languages": [
+          "DE",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "18:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -366,11 +399,20 @@
         "id": "emp_27_gunzinger,_francis-mgb",
         "name": "Gunzinger, Francis-MGB",
         "email": "francis.gunzinger@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
+        "roles": [
+          "Contact Team"
+        ],
+        "languages": [
+          "DE",
+          "FR",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "18:00",
+        "weekday_blockers": {
+          "Thu": "not working",
+          "Fri": "not working"
+        },
         "hard_constraints": [],
         "soft_preferences": [],
         "group": null
@@ -379,23 +421,15 @@
         "id": "emp_28_sali,_melisa-mgb",
         "name": "Sali, Melisa-MGB",
         "email": "melisa.sali@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_29_cueni,_pascal-mgb",
-        "name": "Cueni, Pascal-MGB",
-        "email": "pascal.cueni@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Mind Contact Team"
+        ],
+        "languages": [
+          "EN",
+          "FR"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "18:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -405,10 +439,15 @@
         "id": "emp_30_nikolov,_martin-mgb",
         "name": "Nikolov, Martin-MGB",
         "email": "martin.nikolov@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Mind Contact Team"
+        ],
+        "languages": [
+          "DE",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "18:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -418,10 +457,15 @@
         "id": "emp_31_sopranetti,_cédric-mgb",
         "name": "Sopranetti, Cédric-MGB",
         "email": "cedric.sopranetti@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Contact Team"
+        ],
+        "languages": [
+          "DE",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "18:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -431,23 +475,15 @@
         "id": "emp_32_kotzeva,_anelia-mgb",
         "name": "Kotzeva, Anelia-MGB",
         "email": "anelia.kotzeva@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_33_dürlewanger,_leonardo-mgb",
-        "name": "Dürlewanger, Leonardo-MGB",
-        "email": "leonardo.duerlewanger@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Contact Team"
+        ],
+        "languages": [
+          "DE",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "18:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -457,36 +493,39 @@
         "id": "emp_34_bänninger,_markus-mgb",
         "name": "Bänninger, Markus-MGB",
         "email": "markus.baenninger@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Operation Lead",
+          "PCV WoVe"
+        ],
+        "languages": [
+          "DE",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "17:00",
         "weekday_blockers": {},
         "hard_constraints": [],
-        "soft_preferences": [],
-        "group": null
-      },
-      {
-        "id": "emp_35_mingard,_kai-mgb",
-        "name": "Mingard, Kai-MGB",
-        "email": "kai.mingard@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
-        "weekday_blockers": {},
-        "hard_constraints": [],
-        "soft_preferences": [],
+        "soft_preferences": [
+          "Is always Operation Lead but can if needed also do PCV WoVe at the same time"
+        ],
         "group": null
       },
       {
         "id": "emp_36_wiprächtiger,_michael-mgb",
         "name": "Wiprächtiger, Michael-MGB",
         "email": "michael.wipraechtiger@mgb.ch",
-        "roles": [],
-        "languages": [],
-        "earliest_start": null,
-        "latest_end": null,
+        "roles": [
+          "Dispatcher Wove",
+          "Dispatcher",
+          "PCV WoVe",
+          "Techbar"
+        ],
+        "languages": [
+          "DE",
+          "EN"
+        ],
+        "earliest_start": "07:00",
+        "latest_end": "19:00",
         "weekday_blockers": {},
         "hard_constraints": [],
         "soft_preferences": [],
@@ -536,9 +575,19 @@
           "Mon",
           "Thu",
           "Tue",
-          "Wed"
+          "Wed",
+          "Sat",
+          "Sun"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1,
+          "Sat": 1,
+          "Sun": 1
+        },
         "notes": "Pikett",
         "color_code": "10",
         "unpaid_break_minutes": null,
@@ -558,7 +607,13 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "Operation Lead",
         "color_code": "1",
         "unpaid_break_minutes": null,
@@ -578,7 +633,13 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "Mind Dispatching",
         "color_code": "9",
         "unpaid_break_minutes": null,
@@ -598,7 +659,13 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "Contact Team",
         "color_code": "4",
         "unpaid_break_minutes": null,
@@ -612,13 +679,15 @@
         "start_time": "07:00",
         "end_time": "16:00",
         "weekdays": [
-          "Fri",
-          "Mon",
-          "Thu",
           "Tue",
-          "Wed"
+          "Wed",
+          "Fri"
         ],
-        "required_count": {},
+        "required_count": {
+          "Tue": 1,
+          "Wed": 1,
+          "Fri": 1
+        },
         "notes": "IT Redakteur",
         "color_code": "8",
         "unpaid_break_minutes": null,
@@ -644,7 +713,9 @@
         "unpaid_break_minutes": null,
         "teams_label": null,
         "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
+        "concurrent_shifts": [
+          "pikett-sob-1800"
+        ]
       },
       {
         "id": "contact-team-0700",
@@ -659,13 +730,24 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 3,
+          "Tue": 3,
+          "Wed": 3,
+          "Thu": 3,
+          "Fri": 3,
+          "Sat": 1
+        },
         "notes": "Contact Team",
         "color_code": "2",
         "unpaid_break_minutes": null,
         "teams_label": null,
         "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
+        "concurrent_shifts": [
+          "techbar-0900",
+          "pikett-sob-1800",
+          "pikett-1800"
+        ]
       },
       {
         "id": "sob-wove-0800",
@@ -679,13 +761,21 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "SOB Wove",
         "color_code": "3",
         "unpaid_break_minutes": null,
         "teams_label": null,
         "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
+        "concurrent_shifts": [
+          "techbar-0900"
+        ]
       },
       {
         "id": "sob-backup-0800",
@@ -699,13 +789,22 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "SOB Backup",
         "color_code": "3",
         "unpaid_break_minutes": null,
         "teams_label": null,
         "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
+        "concurrent_shifts": [
+          "techbar-0900",
+          "pikett-sob-1800"
+        ]
       },
       {
         "id": "dispatcher-wove-0700",
@@ -719,13 +818,21 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "Dispatcher Wove",
         "color_code": "2",
         "unpaid_break_minutes": null,
         "teams_label": null,
         "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
+        "concurrent_shifts": [
+          "techbar-0900"
+        ]
       },
       {
         "id": "mind-contact-team-0800",
@@ -739,7 +846,13 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "Mind Contact Team",
         "color_code": "9",
         "unpaid_break_minutes": null,
@@ -759,7 +872,13 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 2,
+          "Tue": 2,
+          "Wed": 2,
+          "Thu": 2,
+          "Fri": 2
+        },
         "notes": "Contact Team",
         "color_code": "6",
         "unpaid_break_minutes": null,
@@ -779,7 +898,13 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "Dispatcher",
         "color_code": "3",
         "unpaid_break_minutes": null,
@@ -788,10 +913,10 @@
         "concurrent_shifts": []
       },
       {
-        "id": "pcv-wove-0700",
+        "id": "pcv-wove-0800",
         "role": "PCV WoVe",
-        "start_time": "07:00",
-        "end_time": "16:00",
+        "start_time": "08:00",
+        "end_time": "17:00",
         "weekdays": [
           "Fri",
           "Mon",
@@ -799,13 +924,22 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "PCV WoVe",
         "color_code": "9",
         "unpaid_break_minutes": null,
         "teams_label": null,
         "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
+        "concurrent_shifts": [
+          "operation-lead-0700",
+          "techbar-0900"
+        ]
       },
       {
         "id": "dispatcher-0900",
@@ -819,13 +953,21 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "Dispatcher",
         "color_code": "6",
         "unpaid_break_minutes": null,
         "teams_label": null,
         "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
+        "concurrent_shifts": [
+          "techbar-0900"
+        ]
       },
       {
         "id": "contact-team-0800",
@@ -845,7 +987,9 @@
         "unpaid_break_minutes": null,
         "teams_label": null,
         "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
+        "concurrent_shifts": [
+          "techbar-0900"
+        ]
       },
       {
         "id": "techbar-0900",
@@ -857,13 +1001,28 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1
+        },
         "notes": "Techbar",
         "color_code": "5",
         "unpaid_break_minutes": null,
         "teams_label": null,
         "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
+        "concurrent_shifts": [
+          "pikett-1800",
+          "contact-team-0700",
+          "sob-backup-0800",
+          "pcv-wove-0700",
+          "dispatcher-0800",
+          "dispatcher-0900",
+          "contact-team-0900",
+          "contact-team-0800",
+          "pcv-wove-0800",
+          "pikett-sob-1800"
+        ]
       },
       {
         "id": "contact-team-1230",
@@ -892,28 +1051,14 @@
           "Thu",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "Mind Contact Team",
-        "color_code": "9",
-        "unpaid_break_minutes": null,
-        "teams_label": null,
-        "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
-      },
-      {
-        "id": "pcv-wove-0800",
-        "role": "PCV WoVe",
-        "start_time": "08:00",
-        "end_time": "17:00",
-        "weekdays": [
-          "Fri",
-          "Mon",
-          "Thu",
-          "Tue",
-          "Wed"
-        ],
-        "required_count": {},
-        "notes": "PCV WoVe",
         "color_code": "9",
         "unpaid_break_minutes": null,
         "teams_label": null,
@@ -931,7 +1076,13 @@
           "Tue",
           "Wed"
         ],
-        "required_count": {},
+        "required_count": {
+          "Mon": 1,
+          "Tue": 1,
+          "Wed": 1,
+          "Thu": 1,
+          "Fri": 1
+        },
         "notes": "M-Industrie Projekt",
         "color_code": "8",
         "unpaid_break_minutes": null,
@@ -955,65 +1106,11 @@
         "teams_label": null,
         "shared_status": "1. Geteilt",
         "concurrent_shifts": []
-      },
-      {
-        "id": "pikett-sob",
-        "role": "Pikett SOB",
-        "start_time": "18:00",
-        "end_time": "00:00",
-        "weekdays": [
-          "Fri",
-          "Mon",
-          "Sat",
-          "Sun",
-          "Thu",
-          "Tue",
-          "Wed"
-        ],
-        "required_count": {},
-        "notes": "Pikett SOB",
-        "color_code": "10",
-        "unpaid_break_minutes": null,
-        "teams_label": null,
-        "shared_status": "1. Geteilt",
-        "concurrent_shifts": []
-      },
-      {
-        "id": "pikett",
-        "role": "Pikett",
-        "start_time": "18:00",
-        "end_time": "00:00",
-        "weekdays": [
-          "Fri",
-          "Mon",
-          "Thu",
-          "Tue",
-          "Wed",
-          "Sat",
-          "Sun"
-        ],
-        "required_count": {
-          "Mon": 1,
-          "Tue": 1,
-          "Wed": 1,
-          "Thu": 1,
-          "Fri": 1,
-          "Sat": 1,
-          "Sun": 1
-        },
-        "notes": "Pikett",
-        "color_code": "10",
-        "unpaid_break_minutes": null,
-        "teams_label": null,
-        "shared_status": "1. Geteilt",
-        "concurrent_shifts": [
-          "contact-team-0700"
-        ]
       }
     ],
     "global_rules": {
       "preamble": "You are a meticulous, constraint-aware shift planner.",
-      "narrative_rules": "",
+      "narrative_rules": "Ideally 3 to 4 employee cover contact team at 7am but that doesn't always work when people are on vacation or sick etc. \nThe person who does Pikett always does contact team starting at 07:00 and then does it as well on saturday. \nContact Team starting at 8am is filled with employees when the requirements for the contact team 07:00 and 09:00 are met. \n\nHolidays: \n24.12 everyone works\n25.12 nobody works except pikett and sob pikett\n31.12 everone works \n",
       "output_format_instructions": "Return a valid JSON schedule. Top-level keys: dates[], assignments[], violations[], and notes. Each assignment maps (date, role, shift_id) -> employee_id.",
       "token_budgets": {
         "max_prompt_chars": 120000
@@ -1022,25 +1119,25 @@
     "custom_data": {},
     "llm_config": {
       "provider_config": {
-        "provider": "openai",
-        "api_key": "",
+        "provider": "azure",
+        "api_key": "ricardo.kupper@mgb.ch-abc-5f15e6bb0a593bbaeb8f6feca16d29",
         "base_url": null,
-        "azure_endpoint": null,
-        "azure_deployment": null,
+        "azure_endpoint": "https://mgb-aifo-proxy.service.migros.cloud/aoai",
+        "azure_deployment": "gpt-5",
         "api_version": "2024-10-21",
         "http_referer": null,
         "x_title": null,
-        "model": "gpt-4o",
+        "model": "gpt-5",
         "available_models": []
       },
       "temperature": 0.2,
-      "max_tokens": 4096,
+      "max_tokens": 128000,
       "top_p": 1.0,
       "frequency_penalty": 0.0,
       "presence_penalty": 0.0,
       "json_mode": true,
       "enable_streaming": true,
-      "reasoning_effort": null,
+      "reasoning_effort": "high",
       "reasoning_max_tokens": null,
       "reasoning_exclude": false,
       "budget_tokens": null,
@@ -1050,8 +1147,8 @@
       "enable_mcp": false
     },
     "planning_period": {
-      "start_date": "2025-11-11",
-      "end_date": "2025-11-17"
+      "start_date": "2025-12-14",
+      "end_date": "2025-12-31"
     },
     "schedule_state": {
       "uploaded_entries": [
