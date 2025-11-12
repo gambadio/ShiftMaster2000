@@ -1844,100 +1844,180 @@ with tabs[8]:
 
         if st.button(get_text("generate_button", lang), type="primary"):
             generated_now = True
-            with st.spinner("Generating schedule..."):
-                planning_tuple = (
-                    project.planning_period.start_date.isoformat(),
-                    project.planning_period.end_date.isoformat()
-                )
+            
+            # Clear previous streaming outputs
+            st.session_state.streaming_output = ""
+            st.session_state.thinking_output = ""
+            
+            planning_tuple = (
+                project.planning_period.start_date.isoformat(),
+                project.planning_period.end_date.isoformat()
+            )
 
-                today_iso = date.today().isoformat()
+            today_iso = date.today().isoformat()
 
-                prompt = build_system_prompt(
-                    project,
-                    schedule_payload=st.session_state.schedule_payload,
-                    today_iso=today_iso,
-                    planning_period=planning_tuple
-                )
+            prompt = build_system_prompt(
+                project,
+                schedule_payload=st.session_state.schedule_payload,
+                today_iso=today_iso,
+                planning_period=planning_tuple
+            )
 
-                if project.llm_config.mcp_servers:
-                    mcp_tools_section = format_mcp_tools_for_prompt(project.llm_config.mcp_servers)
-                    prompt += "\n\n" + mcp_tools_section
+            if project.llm_config.mcp_servers:
+                mcp_tools_section = format_mcp_tools_for_prompt(project.llm_config.mcp_servers)
+                prompt += "\n\n" + mcp_tools_section
 
-                try:
-                    result = call_llm_sync(prompt, project.llm_config, "Produce the schedule now.")
-                    st.session_state.generated_schedule = result
+            try:
+                # Use async with streaming if enabled
+                if project.llm_config.enable_streaming:
+                    import asyncio
+                    from llm_manager import call_llm_with_reasoning
+                    
+                    # Create containers for live output
+                    status_text = st.empty()
+                    thinking_expander = st.expander("🧠 Model Thinking (Live Stream)", expanded=True)
+                    content_expander = st.expander("📝 Generated Content (Live Stream)", expanded=True)
+                    
+                    thinking_area = thinking_expander.empty()
+                    content_area = content_expander.empty()
+                    
+                    status_text.info("🤔 Model is thinking and generating...")
+                    
+                    # Counters for periodic updates (to avoid too many rerenders)
+                    chunk_count = [0]  # Use list to allow modification in closure
+                    thinking_count = [0]
+                    
+                    # Define callbacks that update session state
+                    def update_thinking_stream(chunk: str):
+                        """Accumulate thinking output"""
+                        st.session_state.thinking_output += chunk
+                        thinking_count[0] += 1
+                        # Update display every 5 chunks or if significant content
+                        if thinking_count[0] % 5 == 0 or len(chunk) > 50:
+                            thinking_area.text_area(
+                                "Reasoning:",
+                                value=st.session_state.thinking_output,
+                                height=300,
+                                disabled=True,
+                                key=f"think_{thinking_count[0]}"
+                            )
+                    
+                    def update_content_stream(chunk: str):
+                        """Accumulate content output"""
+                        st.session_state.streaming_output += chunk
+                        chunk_count[0] += 1
+                        # Update display every 10 chunks or if it's a complete JSON object
+                        if chunk_count[0] % 10 == 0 or '}' in chunk or ']' in chunk:
+                            content_area.code(
+                                st.session_state.streaming_output, 
+                                language="json"
+                            )
+                    
+                    # Run async streaming
+                    async def stream_generation():
+                        result = await call_llm_with_reasoning(
+                            prompt=prompt,
+                            config=project.llm_config,
+                            user_message="Produce the schedule now.",
+                            on_chunk=update_content_stream,
+                            on_thinking=update_thinking_stream
+                        )
+                        return result
+                    
+                    result = asyncio.run(stream_generation())
+                    
+                    # Final update with complete content
+                    if st.session_state.thinking_output:
+                        thinking_area.text_area(
+                            "Reasoning:",
+                            value=st.session_state.thinking_output,
+                            height=300,
+                            disabled=True,
+                            key="think_final"
+                        )
+                    
+                    if st.session_state.streaming_output:
+                        content_area.code(st.session_state.streaming_output, language="json")
+                    
+                    status_text.success("✅ Streaming complete!")
+                    
+                else:
+                    # Non-streaming fallback
+                    with st.spinner("🤔 Generating schedule..."):
+                        result = call_llm_sync(prompt, project.llm_config, "Produce the schedule now.")
+                st.session_state.generated_schedule = result
 
-                    with output_container:
-                        st.success("✅ Schedule generated!")
+                with output_container:
+                    st.success("✅ Schedule generated!")
 
-                        parse_errors: List[str] = []
-                        notes: Optional[str] = None
-                        try:
-                            schedule_json = parse_json_response(result["content"])
-                            num_shifts = len(schedule_json.get("shifts", []))
-                            num_time_off = len(schedule_json.get("time_off", []))
-                            log_debug_event(f"Parsed LLM JSON: {num_shifts} shifts, {num_time_off} time-off")
+                    parse_errors: List[str] = []
+                    notes: Optional[str] = None
+                    try:
+                        schedule_json = parse_json_response(result["content"])
+                        num_shifts = len(schedule_json.get("shifts", []))
+                        num_time_off = len(schedule_json.get("time_off", []))
+                        log_debug_event(f"Parsed LLM JSON: {num_shifts} shifts, {num_time_off} time-off")
 
-                            entries, notes, parse_errors = parse_llm_schedule_output(schedule_json)
-                            log_debug_event(f"Validated generated entries: {len(entries)} ok, {len(parse_errors)} errors")
+                        entries, notes, parse_errors = parse_llm_schedule_output(schedule_json)
+                        log_debug_event(f"Validated generated entries: {len(entries)} ok, {len(parse_errors)} errors")
 
-                            st.session_state.last_generated_payload = schedule_json
-                            st.session_state.last_parse_errors = parse_errors
-                            st.session_state.last_generation_notes = notes
+                        st.session_state.last_generated_payload = schedule_json
+                        st.session_state.last_parse_errors = parse_errors
+                        st.session_state.last_generation_notes = notes
 
-                            display_generation_result(result, parse_errors=parse_errors, notes=notes)
+                        display_generation_result(result, parse_errors=parse_errors, notes=notes)
 
-                            st.write(f"🔍 DEBUG: Parsed JSON with {num_shifts} shifts and {num_time_off} time-off entries")
-                            st.write(f"🔍 DEBUG: parse_llm_schedule_output returned {len(entries)} entries")
+                        st.write(f"🔍 DEBUG: Parsed JSON with {num_shifts} shifts and {num_time_off} time-off entries")
+                        st.write(f"🔍 DEBUG: parse_llm_schedule_output returned {len(entries)} entries")
 
-                            if not entries:
-                                st.error("❌ LLM output decoded but produced zero valid schedule entries.")
-                                log_debug_event("No valid entries after parsing; aborting add")
-                                raise RuntimeError("No valid schedule entries produced")
+                        if not entries:
+                            st.error("❌ LLM output decoded but produced zero valid schedule entries.")
+                            log_debug_event("No valid entries after parsing; aborting add")
+                            raise RuntimeError("No valid schedule entries produced")
 
-                            st.write(f"🔍 DEBUG: First entry - Employee: {entries[0].employee_name}, Date: {entries[0].start_date}")
-                            log_debug_event(f"Sample entry: {entries[0].employee_name} on {entries[0].start_date}")
+                        st.write(f"🔍 DEBUG: First entry - Employee: {entries[0].employee_name}, Date: {entries[0].start_date}")
+                        log_debug_event(f"Sample entry: {entries[0].employee_name} on {entries[0].start_date}")
 
-                            before_count = len(st.session_state.schedule_manager.state.generated_entries)
-                            st.write(f"🔍 DEBUG: Generated entries BEFORE adding: {before_count}")
-                            log_debug_event(f"Generated entries before add: {before_count}")
+                        before_count = len(st.session_state.schedule_manager.state.generated_entries)
+                        st.write(f"🔍 DEBUG: Generated entries BEFORE adding: {before_count}")
+                        log_debug_event(f"Generated entries before add: {before_count}")
 
-                            st.session_state.schedule_manager.add_generated_entries(entries)
-                            st.session_state.schedule_manager.state.generation_notes = notes
+                        st.session_state.schedule_manager.add_generated_entries(entries)
+                        st.session_state.schedule_manager.state.generation_notes = notes
 
-                            after_count = len(st.session_state.schedule_manager.state.generated_entries)
-                            st.write(f"🔍 DEBUG: Generated entries AFTER adding: {after_count}")
-                            log_debug_event(f"Generated entries after add: {after_count}")
+                        after_count = len(st.session_state.schedule_manager.state.generated_entries)
+                        st.write(f"🔍 DEBUG: Generated entries AFTER adding: {after_count}")
+                        log_debug_event(f"Generated entries after add: {after_count}")
 
-                            st.session_state.generated_entries = entries
+                        st.session_state.generated_entries = entries
 
-                            st.success(f"✅ Successfully parsed and added {len(entries)} schedule entries!")
-                            st.info("📅 Navigate to the **Preview** tab to see the calendar")
-                            auto_save_if_enabled()
-                        except Exception as e:
-                            st.session_state.last_parse_errors = parse_errors
-                            st.session_state.last_generation_notes = notes
-                            log_debug_event(f"Schedule parsing failed: {e}")
-                            st.warning(f"Could not parse schedule entries: {e}")
-                            display_generation_result(result, parse_errors=parse_errors, notes=notes)
-                        else:
-                            if parse_errors:
-                                log_debug_event("Parsing issues surfaced to user")
-                        finally:
-                            if result.get("usage"):
-                                col1, col2, col3 = st.columns(3)
-                                with col1:
-                                    st.metric("Input tokens", result["usage"].get("input_tokens", 0))
-                                with col2:
-                                    st.metric("Output tokens", result["usage"].get("output_tokens", 0))
-                                with col3:
-                                    total = result["usage"].get("input_tokens", 0) + result["usage"].get("output_tokens", 0)
-                                    st.metric("Total tokens", total)
+                        st.success(f"✅ Successfully parsed and added {len(entries)} schedule entries!")
+                        st.info("📅 Navigate to the **Preview** tab to see the calendar")
+                        auto_save_if_enabled()
+                    except Exception as e:
+                        st.session_state.last_parse_errors = parse_errors
+                        st.session_state.last_generation_notes = notes
+                        log_debug_event(f"Schedule parsing failed: {e}")
+                        st.warning(f"Could not parse schedule entries: {e}")
+                        display_generation_result(result, parse_errors=parse_errors, notes=notes)
+                    else:
+                        if parse_errors:
+                            log_debug_event("Parsing issues surfaced to user")
+                    finally:
+                        if result.get("usage"):
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Input tokens", result["usage"].get("input_tokens", 0))
+                            with col2:
+                                st.metric("Output tokens", result["usage"].get("output_tokens", 0))
+                            with col3:
+                                total = result["usage"].get("input_tokens", 0) + result["usage"].get("output_tokens", 0)
+                                st.metric("Total tokens", total)
 
-                except Exception as e:
-                    with output_container:
-                        st.error(f"Generation failed: {e}")
-                        st.exception(e)
+            except Exception as e:
+                with output_container:
+                    st.error(f"Generation failed: {e}")
+                    st.exception(e)
 
         if not generated_now and st.session_state.generated_schedule:
             with output_container:
