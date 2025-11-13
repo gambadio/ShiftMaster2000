@@ -56,13 +56,31 @@ For Azure GPT-5, the usage object looks like:
 params = {
     "model": azure_deployment_name,  # NOT the model name
     "messages": messages,
-    "max_completion_tokens": 100000,  # NOT max_tokens
+    "max_completion_tokens": 128000,  # NOT max_tokens (max 128k for output)
     "reasoning_effort": "high",  # Optional: minimal/low/medium/high
     "stream": True,
     "stream_options": {"include_usage": True}  # Get usage in final chunk
 }
 
 # Temperature, top_p etc. should NOT be included for reasoning models
+```
+
+### ⚠️ **CRITICAL: Preventing Truncated Responses**
+
+**Problem**: If `max_completion_tokens` is too low (e.g., 4096), the model will truncate long responses and return `finish_reason: "length"` instead of `finish_reason: "stop"`.
+
+**Solution**: 
+- For **planning/generation tasks**: Use at least **16,000-32,000** tokens
+- For **complex multi-step tasks**: Use **64,000-100,000** tokens  
+- **Maximum supported**: 128,000 output tokens (GPT-5 limit)
+
+**How to check**:
+```python
+response = client.chat.completions.create(...)
+if response.choices[0].finish_reason == "length":
+    print("⚠️ Response was truncated! Increase max_completion_tokens")
+elif response.choices[0].finish_reason == "stop":
+    print("✅ Complete response generated")
 ```
 
 ### 📝 Getting Reasoning Summaries

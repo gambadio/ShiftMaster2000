@@ -142,7 +142,7 @@ class LLMConfig(BaseModel):
 
     # Generation parameters
     temperature: float = 0.2
-    max_tokens: int = 4096
+    max_tokens: int = 128000  # Increased for longer completions (GPT-5 supports up to 128k)
     top_p: float = 1.0
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0

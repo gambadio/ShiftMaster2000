@@ -1938,7 +1938,12 @@ with tabs[8]:
                         result = await call_llm_with_reasoning(
                             prompt=prompt,
                             config=project.llm_config,
-                            user_message="Produce the schedule now.",
+                            user_message=(
+                                "Generate the COMPLETE schedule now for the entire planning period. "
+                                "You MUST produce ALL shifts for ALL employees for ALL days in a SINGLE response. "
+                                "Do NOT summarize. Do NOT ask if I want more details. Do NOT say 'let me know if you want me to continue'. "
+                                "Output the FULL JSON with every single shift assignment. This is a one-shot generation - there is no follow-up conversation."
+                            ),
                             on_chunk=update_content_stream,
                             on_thinking=update_thinking_stream
                         )
@@ -1964,7 +1969,16 @@ with tabs[8]:
                 else:
                     # Non-streaming fallback
                     with st.spinner("🤔 Generating schedule..."):
-                        result = call_llm_sync(prompt, project.llm_config, "Produce the schedule now.")
+                        result = call_llm_sync(
+                            prompt, 
+                            project.llm_config, 
+                            (
+                                "Generate the COMPLETE schedule now for the entire planning period. "
+                                "You MUST produce ALL shifts for ALL employees for ALL days in a SINGLE response. "
+                                "Do NOT summarize. Do NOT ask if I want more details. Do NOT say 'let me know if you want me to continue'. "
+                                "Output the FULL JSON with every single shift assignment. This is a one-shot generation - there is no follow-up conversation."
+                            )
+                        )
                 st.session_state.generated_schedule = result
 
                 with output_container:

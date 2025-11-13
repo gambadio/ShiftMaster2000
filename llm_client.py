@@ -266,7 +266,7 @@ class LLMClient:
                     if hasattr(details, 'reasoning_tokens'):
                         reasoning_tokens = details.reasoning_tokens
 
-                return {
+                result = {
                     "content": content,
                     "usage": {
                         "prompt_tokens": usage.prompt_tokens,
@@ -277,6 +277,15 @@ class LLMClient:
                     "finish_reason": choice.finish_reason,
                     "model": response.model
                 }
+                
+                # Warn if response was truncated
+                if choice.finish_reason == "length":
+                    print(f"\n⚠️ WARNING: Response was truncated!")
+                    print(f"   Used {usage.completion_tokens} tokens (hit max_completion_tokens limit)")
+                    print(f"   Recommendation: Increase max_tokens to {usage.completion_tokens * 2} or higher")
+                    print(f"   GPT-5 supports up to 128,000 output tokens\n")
+                
+                return result
 
             except RateLimitError as e:
                 if attempt == max_retries - 1:

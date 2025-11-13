@@ -30,6 +30,23 @@ Use these color codes when formatting output. Each shift should be assigned an a
 SYSTEM_TEMPLATE = """\
 {preamble}
 
+## YOUR TASK: ONE-SHOT COMPLETE SCHEDULE GENERATION
+
+You are generating a work schedule in a SINGLE, COMPLETE response. This is NOT a conversation.
+
+DO NOT:
+- Ask if the user wants more details
+- Say "let me know if you want me to continue"
+- Provide partial results and wait for follow-up
+- Summarize or abbreviate the output
+- Be conversational or chatty
+
+DO:
+- Generate ALL shifts for ALL employees for ALL days in the planning period
+- Output the COMPLETE JSON structure with every single shift assignment
+- Include detailed notes about constraints, violations, and reasoning in the top-level notes field
+- Treat this as a one-shot batch job that produces complete output
+
 You will produce a fair, rotation-balanced schedule for the planning period that covers all required roles and shifts,
 honors hard constraints, and tries to satisfy soft preferences.
 Resolve conflicts explicitly and note any rule violations.
@@ -82,7 +99,7 @@ You MUST return a JSON object with this EXACT structure:
 - `color_code`: MUST be one of: "1. Weiß", "2. Blau", "3. Grün", "4. Lila", "5. Rosa", "6. Gelb", "8. Dunkelblau", "9. Dunkelgrün", "10. Dunkelviolett", "11. Dunkelrosa", "12. Dunkelgelb", "13. Grau"
 - `label`: Role/shift name from shifts templates (e.g., "Operation Lead", "Dispatcher Wove")
 - `unpaid_break`: Integer minutes or null
-- `notes`: **REQUIRED** - The role/shift name for this assignment (e.g., "Contact Team", "Dispatcher", "Pikett"). This field MUST contain the role name.
+- `notes`: **REQUIRED** - The role/shift name for this assignment (e.g., "Contact Team", "Dispatcher", "Pikett"). This field MUST contain the role name. No additional Text like Time or other notes. 
 - `shared`: MUST be "1. Geteilt" (shared) or "2. Nicht freigegeben" (not shared)
 
 **CRITICAL**: The `notes` field in each shift entry MUST contain the role/shift name. The top-level `notes` field is for schedule-level explanations only.
@@ -90,7 +107,11 @@ You MUST return a JSON object with this EXACT structure:
 When you must break a rule to cover a critical shift, prefer breaking soft preferences first. If a role cannot be covered,
 explain in the top-level `notes` field (NOT in individual shift notes). Distribute assignments fairly considering employee constraints and availability.
 
-**IMPORTANT**: Output ONLY valid JSON matching this structure. No additional text before or after the JSON.
+**IMPORTANT**: 
+1. Output ONLY valid JSON matching this structure. No additional text before or after the JSON.
+2. Generate the COMPLETE schedule in ONE response - do not stop early or ask to continue.
+3. Include ALL shifts for ALL employees for the ENTIRE planning period.
+4. This is a batch generation task, not an interactive conversation.
 """
 
 SCHEDULE_ADDENDUM_TEMPLATE = """\
