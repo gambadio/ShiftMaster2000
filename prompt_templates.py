@@ -82,11 +82,13 @@ You MUST return a JSON object with this EXACT structure:
 - `color_code`: MUST be one of: "1. Weiß", "2. Blau", "3. Grün", "4. Lila", "5. Rosa", "6. Gelb", "8. Dunkelblau", "9. Dunkelgrün", "10. Dunkelviolett", "11. Dunkelrosa", "12. Dunkelgelb", "13. Grau"
 - `label`: Role/shift name from shifts templates (e.g., "Operation Lead", "Dispatcher Wove")
 - `unpaid_break`: Integer minutes or null
-- `notes`: Any relevant notes about this specific assignment
+- `notes`: **REQUIRED** - The role/shift name for this assignment (e.g., "Contact Team", "Dispatcher", "Pikett"). This field MUST contain the role name.
 - `shared`: MUST be "1. Geteilt" (shared) or "2. Nicht freigegeben" (not shared)
 
+**CRITICAL**: The `notes` field in each shift entry MUST contain the role/shift name. The top-level `notes` field is for schedule-level explanations only.
+
 When you must break a rule to cover a critical shift, prefer breaking soft preferences first. If a role cannot be covered,
-explain in the top-level `notes` field. Distribute assignments fairly considering employee constraints and availability.
+explain in the top-level `notes` field (NOT in individual shift notes). Distribute assignments fairly considering employee constraints and availability.
 
 **IMPORTANT**: Output ONLY valid JSON matching this structure. No additional text before or after the JSON.
 """
