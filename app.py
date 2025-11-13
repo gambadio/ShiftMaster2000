@@ -1261,10 +1261,29 @@ with tabs[5]:
         else:
             st.metric(get_text("schedule_included", lang), "✗ No")
 
-    # Display prompt
-    st.code(compiled, language="markdown")
+    # Display prompt in a styled scrollable container
+    st.markdown(
+        f"""
+        <div style="
+            max-height: 600px;
+            overflow-y: auto;
+            border: 1px solid rgba(49, 51, 63, 0.2);
+            border-radius: 8px;
+            padding: 1.5rem;
+            background-color: rgba(240, 242, 246, 0.5);
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            margin-bottom: 1.5rem;
+        ">{compiled}</div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    # Download button
+    # Download button with spacing
     st.download_button(
         get_text("download_prompt", lang),
         data=compiled,
