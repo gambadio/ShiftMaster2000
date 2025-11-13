@@ -144,9 +144,13 @@ Weekdays included: {', '.join(set(weekdays))}
     compiled = sys + "\n\nData:\n" + json_block(data)
 
     if schedule_payload:
+        # Filter out fairness_hints and members from the payload
+        filtered_payload = {k: v for k, v in schedule_payload.items() 
+                           if k not in ["fairness_hints", "members"]}
+        
         addendum = SCHEDULE_ADDENDUM_TEMPLATE.format(
             today=today_iso or "unknown",
-            schedule_json=json_block(schedule_payload)
+            schedule_json=json_block(filtered_payload)
         )
         compiled += "\n\n" + addendum
 

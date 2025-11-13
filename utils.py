@@ -446,9 +446,9 @@ def parse_schedule_to_payload(file_bytes: bytes, filename: str, today: date) -> 
     past_cap = past_sorted[:800]
     future_cap = future_sorted[:800]
 
-    # derive lightweight fairness hints (last 14 days)
-    last_14 = [r for r in past_sorted if (today - pd.to_datetime(r["date"]).date()).days <= 14]
-    fairness_hints = _compute_fairness_hints(last_14)
+    # derive lightweight fairness hints (last 14 days) - DISABLED FOR NOW
+    # last_14 = [r for r in past_sorted if (today - pd.to_datetime(r["date"]).date()).days <= 14]
+    # fairness_hints = _compute_fairness_hints(last_14)
 
     return {
         "meta": {
@@ -460,7 +460,7 @@ def parse_schedule_to_payload(file_bytes: bytes, filename: str, today: date) -> 
         },
         "past_entries": past_cap,
         "future_entries": future_cap,
-        "fairness_hints": fairness_hints,  # e.g., recent late/pikett streaks per employee
+        # "fairness_hints": fairness_hints,  # e.g., recent late/pikett streaks per employee - DISABLED
     }
 
 def _compute_fairness_hints(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -537,9 +537,9 @@ def parse_dual_schedule_files(
     past_cap = past_sorted[:800]
     future_cap = future_sorted[:800]
 
-    # Compute fairness hints from last 14 days
-    last_14 = [r for r in past_sorted if (today - pd.to_datetime(r["start_date"]).date()).days <= 14]
-    fairness_hints = _compute_fairness_hints(last_14)
+    # Compute fairness hints from last 14 days - DISABLED FOR NOW
+    # last_14 = [r for r in past_sorted if (today - pd.to_datetime(r["start_date"]).date()).days <= 14]
+    # fairness_hints = _compute_fairness_hints(last_14)
 
     return {
         "meta": {
@@ -552,7 +552,7 @@ def parse_dual_schedule_files(
         },
         "past_entries": past_cap,
         "future_entries": future_cap,
-        "fairness_hints": fairness_hints,
+        # "fairness_hints": fairness_hints,  # DISABLED
     }
 
 def _parse_teams_file(df: pd.DataFrame, entry_type: str = "shift") -> List[Dict[str, Any]]:
@@ -718,9 +718,9 @@ def parse_teams_excel_multisheet(
     past_cap = past_sorted[:800]
     future_cap = future_sorted[:800]
 
-    # Compute fairness hints from last 14 days
-    last_14 = [r for r in past_sorted if (today - pd.to_datetime(r["start_date"]).date()).days <= 14]
-    fairness_hints = _compute_fairness_hints(last_14)
+    # Compute fairness hints from last 14 days - DISABLED FOR NOW
+    # last_14 = [r for r in past_sorted if (today - pd.to_datetime(r["start_date"]).date()).days <= 14]
+    # fairness_hints = _compute_fairness_hints(last_14)
 
     return {
         "meta": {
@@ -738,8 +738,8 @@ def parse_teams_excel_multisheet(
         },
         "past_entries": past_cap,
         "future_entries": future_cap,
-        "fairness_hints": fairness_hints,
-        "members": members_data,
+        # "fairness_hints": fairness_hints,  # DISABLED
+        # "members": members_data,  # DISABLED - use employee list instead
     }
 
 # ----------------------------
