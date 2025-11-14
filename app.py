@@ -1825,14 +1825,14 @@ with tabs[8]:
     else:
         st.success(f"✅ Ready to generate schedule for {len(project.employees)} employees, {len(project.shifts)} shift types")
 
-        def display_generation_result(result: Dict[str, Any], parse_errors: Optional[List[str]] = None, notes: Optional[str] = None) -> None:
+        def display_generation_result(result: Dict[str, Any], parse_errors: Optional[List[str]] = None, notes: Optional[str] = None, key_suffix: str = "") -> None:
             """Render the stored generation output with optional diagnostics."""
             if not result:
                 return
 
             header_col, action_col = st.columns([6, 1])
             with action_col:
-                if st.button("🧹 Clear Output", key="clear_generation_output"):
+                if st.button("🧹 Clear Output", key=f"clear_generation_output{key_suffix}"):
                     st.session_state.generated_schedule = None
                     st.session_state.last_parse_errors = []
                     st.session_state.last_generation_notes = None
@@ -1999,7 +1999,7 @@ with tabs[8]:
                         st.session_state.last_parse_errors = parse_errors
                         st.session_state.last_generation_notes = notes
 
-                        display_generation_result(result, parse_errors=parse_errors, notes=notes)
+                        display_generation_result(result, parse_errors=parse_errors, notes=notes, key_suffix="_initial")
 
                         st.write(f"🔍 DEBUG: Parsed JSON with {num_shifts} shifts and {num_time_off} time-off entries")
                         st.write(f"🔍 DEBUG: parse_llm_schedule_output returned {len(entries)} entries")
@@ -2033,7 +2033,7 @@ with tabs[8]:
                         st.session_state.last_generation_notes = notes
                         log_debug_event(f"Schedule parsing failed: {e}")
                         st.warning(f"Could not parse schedule entries: {e}")
-                        display_generation_result(result, parse_errors=parse_errors, notes=notes)
+                        display_generation_result(result, parse_errors=parse_errors, notes=notes, key_suffix="_error")
                     else:
                         if parse_errors:
                             log_debug_event("Parsing issues surfaced to user")
@@ -2059,6 +2059,7 @@ with tabs[8]:
                     st.session_state.generated_schedule,
                     parse_errors=st.session_state.last_parse_errors,
                     notes=st.session_state.last_generation_notes,
+                    key_suffix="_cached"
                 )
 
 # ---------------------------------------------------------
