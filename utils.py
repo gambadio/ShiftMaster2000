@@ -739,7 +739,7 @@ def parse_teams_excel_multisheet(
         "past_entries": past_cap,
         "future_entries": future_cap,
         # "fairness_hints": fairness_hints,  # DISABLED
-        # "members": members_data,  # DISABLED - use employee list instead
+        "members": members_data,  # Re-enabled for auto-import feature
     }
 
 # ----------------------------
