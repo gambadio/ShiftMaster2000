@@ -468,9 +468,15 @@ def _normalize_llm_output(llm_output: Dict[str, Any], project: Optional[Any] = N
     """
     Normalize LLM output from compact or full format to standard full format.
     
-    Compact format:
+    Compact format (v2 - simplified):
     {
-        "s": [{"e": "Name", "d": "2025-01-01", "st": "07:00", "et": "16:00", "c": "1. Weiß", "l": "Op Lead", "r": "Role"}],
+        "s": [{"e": "Name", "d": "2025-01-01", "st": "07:00", "et": "16:00", "c": "1. Weiß", "n": "Role"}],
+        "x": "schedule notes"
+    }
+    
+    Legacy compact format (v1):
+    {
+        "s": [{"e": "Name", "d": "2025-01-01", "st": "07:00", "et": "16:00", "c": "1. Weiß", "l": "Label", "r": "Role"}],
         "n": "notes"
     }
     
@@ -516,6 +522,12 @@ def _normalize_llm_output(llm_output: Dict[str, Any], project: Optional[Any] = N
         except:
             formatted_date = date_str
         
+        # Handle both v2 format (n=notes) and legacy v1 format (l=label, r=role)
+        # v2: "n" contains the role/function (maps to Notizen in export)
+        # v1: "l" was label (Bezeichnung), "r" was role (Notizen)
+        shift_notes = cs.get("n", "") or cs.get("r", "")  # v2 "n" or legacy "r"
+        shift_label = cs.get("l", "")  # Only from legacy format, usually empty now
+        
         full_entry = {
             "employee_name": emp_name,
             "employee_email": cs.get("m") or emp_info.get("email", ""),
@@ -525,16 +537,19 @@ def _normalize_llm_output(llm_output: Dict[str, Any], project: Optional[Any] = N
             "end_date": formatted_date,
             "end_time": cs.get("et", ""),
             "color_code": _normalize_color_code(cs.get("c", "1. Weiß")),
-            "label": cs.get("l", ""),
+            "label": shift_label,
             "unpaid_break": cs.get("b"),
-            "notes": cs.get("r", ""),
+            "notes": shift_notes,
             "shared": "1. Geteilt"
         }
         shifts.append(full_entry)
     
+    # Handle both v2 "x" and legacy "n" for schedule-level notes
+    schedule_notes = llm_output.get("x", "") or llm_output.get("n", "")
+    
     return {
         "shifts": shifts,
-        "notes": llm_output.get("n", "")
+        "notes": schedule_notes
     }
 
 

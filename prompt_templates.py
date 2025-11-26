@@ -67,31 +67,27 @@ Return a JSON object with this structure:
   "s": [
     {{
       "e": "Lastname, Firstname-MGB",
-      "m": "firstname.lastname@mgb.ch",
       "d": "2025-10-01",
       "st": "07:00",
       "et": "16:00",
       "c": "1. Weiß",
-      "l": "Operation Lead",
-      "r": "Contact Team"
+      "n": "Operation Lead"
     }}
   ],
-  "n": "Schedule notes, violations, explanations"
+  "x": "Schedule notes, violations, explanations"
 }}
 ```
 
 **Field Key:**
 - `s`: shifts array (REQUIRED)
 - `e`: employee_name (full name from employees list)
-- `m`: email (optional if in employees list)
 - `d`: date (YYYY-MM-DD)
 - `st`: start_time (HH:MM)
 - `et`: end_time (HH:MM)
 - `c`: color_code ("1. Weiß" to "13. Grau")
-- `l`: label (role display name, e.g., "Operation Lead")
-- `r`: role/notes (the shift role for this assignment)
-- `b`: unpaid_break minutes (optional, omit if null)
-- `n`: top-level notes for schedule-level explanations
+- `n`: notes (role/function for the shift, e.g., "Operation Lead", "Dispatcher")
+- `b`: unpaid_break minutes (optional, omit if 0)
+- `x`: top-level schedule notes/explanations
 
 **Color Codes:**
 1=Weiß (Op Lead), 2=Blau (Contact/Dispatcher 07:00), 3=Grün (SOB), 4=Lila (Late 10:00-19:00),
