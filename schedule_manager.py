@@ -421,17 +421,26 @@ class ScheduleManager:
         return dates
 
 
-def parse_llm_schedule_output(llm_output: Dict[str, Any]) -> Tuple[List[GeneratedScheduleEntry], str, List[str]]:
+def parse_llm_schedule_output(llm_output: Dict[str, Any], project: Optional[Any] = None) -> Tuple[List[GeneratedScheduleEntry], str, List[str]]:
     """Parse LLM output into schedule entries.
+    
+    Handles both full format and compact token-optimized format.
+    
+    Full format: {"shifts": [...], "notes": "..."}
+    Compact format: {"s": [...], "n": "..."}
 
     Returns (entries, notes, errors) so the UI can surface detailed diagnostics.
     """
     entries: List[GeneratedScheduleEntry] = []
     errors: List[str] = []
-    notes = llm_output.get("notes", "") or llm_output.get("generation_notes", "")
+    
+    # Detect format and normalize to full format
+    normalized = _normalize_llm_output(llm_output, project)
+    
+    notes = normalized.get("notes", "") or normalized.get("generation_notes", "")
 
     # Extract shifts
-    shifts = llm_output.get("shifts", [])
+    shifts = normalized.get("shifts", [])
     for idx, shift_data in enumerate(shifts):
         try:
             cleaned = _clean_generated_payload(shift_data)
@@ -442,7 +451,7 @@ def parse_llm_schedule_output(llm_output: Dict[str, Any]) -> Tuple[List[Generate
             errors.append(f"Shift {idx + 1}: {e}")
 
     # Extract time-off if present
-    time_offs = llm_output.get("time_off", [])
+    time_offs = normalized.get("time_off", [])
     for idx, time_off_data in enumerate(time_offs):
         try:
             cleaned = _clean_generated_payload(time_off_data)
@@ -453,6 +462,98 @@ def parse_llm_schedule_output(llm_output: Dict[str, Any]) -> Tuple[List[Generate
             errors.append(f"Time-off {idx + 1}: {e}")
 
     return entries, notes, errors
+
+
+def _normalize_llm_output(llm_output: Dict[str, Any], project: Optional[Any] = None) -> Dict[str, Any]:
+    """
+    Normalize LLM output from compact or full format to standard full format.
+    
+    Compact format:
+    {
+        "s": [{"e": "Name", "d": "2025-01-01", "st": "07:00", "et": "16:00", "c": "1. Weiß", "l": "Op Lead", "r": "Role"}],
+        "n": "notes"
+    }
+    
+    Full format:
+    {
+        "shifts": [{"employee_name": "Name", "start_date": "1/1/2025", ...}],
+        "notes": "notes"
+    }
+    """
+    # Already in full format?
+    if "shifts" in llm_output:
+        return llm_output
+    
+    # Compact format - expand it
+    if "s" not in llm_output:
+        return llm_output  # Unknown format, return as-is
+    
+    # Build employee lookup for missing emails/groups
+    emp_lookup: Dict[str, Dict[str, Any]] = {}
+    if project:
+        for emp in project.employees:
+            emp_lookup[emp.name.lower()] = {
+                "email": emp.email,
+                "group": emp.group or "Service Desk"
+            }
+    
+    shifts = []
+    for cs in llm_output.get("s", []):
+        # Get employee info
+        emp_name = cs.get("e", "")
+        emp_info = emp_lookup.get(emp_name.lower(), {})
+        
+        # Parse date - handle YYYY-MM-DD format and convert to M/D/YYYY
+        date_str = cs.get("d", "")
+        try:
+            from datetime import datetime
+            # Try ISO format first (YYYY-MM-DD)
+            if "-" in date_str and len(date_str) == 10:
+                d = datetime.fromisoformat(date_str).date()
+                formatted_date = f"{d.month}/{d.day}/{d.year}"
+            else:
+                formatted_date = date_str
+        except:
+            formatted_date = date_str
+        
+        full_entry = {
+            "employee_name": emp_name,
+            "employee_email": cs.get("m") or emp_info.get("email", ""),
+            "group": cs.get("g") or emp_info.get("group", "Service Desk"),
+            "start_date": formatted_date,
+            "start_time": cs.get("st", ""),
+            "end_date": formatted_date,
+            "end_time": cs.get("et", ""),
+            "color_code": _normalize_color_code(cs.get("c", "1. Weiß")),
+            "label": cs.get("l", ""),
+            "unpaid_break": cs.get("b"),
+            "notes": cs.get("r", ""),
+            "shared": "1. Geteilt"
+        }
+        shifts.append(full_entry)
+    
+    return {
+        "shifts": shifts,
+        "notes": llm_output.get("n", "")
+    }
+
+
+def _normalize_color_code(color: str) -> str:
+    """Ensure color_code has proper format like '1. Weiß'"""
+    if not color:
+        return "1. Weiß"
+    
+    # Already in correct format?
+    if ". " in str(color):
+        return color
+    
+    # Just a number - add the German name
+    color_names = {
+        "1": "1. Weiß", "2": "2. Blau", "3": "3. Grün", "4": "4. Lila",
+        "5": "5. Rosa", "6": "6. Gelb", "8": "8. Dunkelblau", "9": "9. Dunkelgrün",
+        "10": "10. Dunkelviolett", "11": "11. Dunkelrosa", "12": "12. Dunkelgelb", "13": "13. Grau"
+    }
+    return color_names.get(str(color).strip(), "1. Weiß")
 
 
 def _clean_generated_payload(payload: Dict[str, Any]) -> Dict[str, Any]:

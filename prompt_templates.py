@@ -44,88 +44,83 @@ DO NOT:
 DO:
 - Generate ALL shifts for ALL employees for ALL days in the planning period
 - Output the COMPLETE JSON structure with every single shift assignment
-- Include detailed notes about constraints, violations, and reasoning in the top-level notes field
+- Include notes about constraints/violations in the top-level "n" field
 - Treat this as a one-shot batch job that produces complete output
-
-You will produce a fair, rotation-balanced schedule for the planning period that covers all required roles and shifts,
-honors hard constraints, and tries to satisfy soft preferences.
-Resolve conflicts explicitly and note any rule violations.
 
 {teams_color_spec}
 
 Data dictionary:
-- employees[]: people and their capabilities, languages, constraints, time windows, and email addresses
+- employees[]: people and their capabilities, languages, constraints, and email addresses
 - shifts[]: templates describing role, start/end times, weekdays, headcount, and Teams color codes
 - meta: version, project name
 {planning_period_context}
 
-Rules (free text may include exceptions, blackouts, public holidays, and rotation heuristics):
+Rules:
 {narrative_rules}
 
-## CRITICAL: Output Format for Microsoft Teams Shifts Import
+## OUTPUT FORMAT (Token-Optimized)
 
-You MUST return a JSON object with this EXACT structure:
+Return a JSON object with this structure:
 
 ```json
 {{
-  "shifts": [
+  "s": [
     {{
-      "employee_name": "Lastname, Firstname-MGB",
-      "employee_email": "firstname.lastname@mgb.ch",
-      "group": "Service Desk",
-      "start_date": "10/1/2025",
-      "start_time": "07:00",
-      "end_date": "10/1/2025",
-      "end_time": "16:00",
-      "color_code": "1. Weiß",
-      "label": "Operation Lead",
-      "unpaid_break": null,
-      "notes": "",
-      "shared": "1. Geteilt"
+      "e": "Lastname, Firstname-MGB",
+      "m": "firstname.lastname@mgb.ch",
+      "d": "2025-10-01",
+      "st": "07:00",
+      "et": "16:00",
+      "c": "1. Weiß",
+      "l": "Operation Lead",
+      "r": "Contact Team"
     }}
   ],
-  "notes": "Schedule generation notes, violations, and explanations"
+  "n": "Schedule notes, violations, explanations"
 }}
 ```
 
-**Field Requirements:**
-- `employee_name`: Exact full name from employees list (e.g., "Bänninger, Markus-MGB")
-- `employee_email`: Business email from employees list
-- `group`: Department/team (e.g., "Service Desk")
-- `start_date`: M/D/YYYY format (e.g., "10/1/2025")
-- `start_time`: HH:MM 24-hour format (e.g., "07:00")
-- `end_date`: M/D/YYYY format (usually same as start_date)
-- `end_time`: HH:MM 24-hour format (e.g., "16:00")
-- `color_code`: MUST be one of: "1. Weiß", "2. Blau", "3. Grün", "4. Lila", "5. Rosa", "6. Gelb", "8. Dunkelblau", "9. Dunkelgrün", "10. Dunkelviolett", "11. Dunkelrosa", "12. Dunkelgelb", "13. Grau"
-- `label`: Role/shift name from shifts templates (e.g., "Operation Lead", "Dispatcher Wove")
-- `unpaid_break`: Integer minutes or null
-- `notes`: **REQUIRED** - The role/shift name for this assignment (e.g., "Contact Team", "Dispatcher", "Pikett"). This field MUST contain the role name. No additional Text like Time or other notes. 
-- `shared`: MUST be "1. Geteilt" (shared) or "2. Nicht freigegeben" (not shared)
+**Field Key:**
+- `s`: shifts array (REQUIRED)
+- `e`: employee_name (full name from employees list)
+- `m`: email (optional if in employees list)
+- `d`: date (YYYY-MM-DD)
+- `st`: start_time (HH:MM)
+- `et`: end_time (HH:MM)
+- `c`: color_code ("1. Weiß" to "13. Grau")
+- `l`: label (role display name, e.g., "Operation Lead")
+- `r`: role/notes (the shift role for this assignment)
+- `b`: unpaid_break minutes (optional, omit if null)
+- `n`: top-level notes for schedule-level explanations
 
-**CRITICAL**: The `notes` field in each shift entry MUST contain the role/shift name. The top-level `notes` field is for schedule-level explanations only.
+**Color Codes:**
+1=Weiß (Op Lead), 2=Blau (Contact/Dispatcher 07:00), 3=Grün (SOB), 4=Lila (Late 10:00-19:00),
+5=Rosa (Special), 6=Gelb (Late 09:00-18:00), 8=Dunkelblau (Project), 9=Dunkelgrün (WoVe),
+10=Dunkelviolett (Pikett), 11=Dunkelrosa (People Dev), 12=Dunkelgelb (Livechat), 13=Grau (Time-off)
 
-When you must break a rule to cover a critical shift, prefer breaking soft preferences first. If a role cannot be covered,
-explain in the top-level `notes` field (NOT in individual shift notes). Distribute assignments fairly considering employee constraints and availability.
-
-**IMPORTANT**: 
-1. Output ONLY valid JSON matching this structure. No additional text before or after the JSON.
-2. Generate the COMPLETE schedule in ONE response - do not stop early or ask to continue.
-3. Include ALL shifts for ALL employees for the ENTIRE planning period.
-4. This is a batch generation task, not an interactive conversation.
+**CRITICAL**: Output ONLY valid JSON. Generate the COMPLETE schedule in ONE response.
 """
 
 SCHEDULE_ADDENDUM_TEMPLATE = """\
-Additional context from an uploaded schedule file has been provided. Use it to enforce rotation fairness
-(e.g., avoid consecutive late shifts or Pikett across weeks) and to respect known future unavailability
-(vacations, medical appointments, training, etc.). The model date is **{today}** (Europe/Zurich).
+## Schedule History (Condensed Format)
 
-Compact schedule JSON (past vs future):
+Use this data to enforce rotation fairness and respect unavailability. Model date: **{today}** (Europe/Zurich).
+
+**Format Key:**
+- `p`: past entries, `f`: future entries (unavailability)
+- `e`: employee name
+- `s`: shifts (list of {{r: role, t: time_range, d: dates}})
+- `o`: time-off (list of {{r: reason, d: dates}})
+- Dates: "YYYY-MM-DD" or "start:end" for consecutive ranges
+
+```json
 {schedule_json}
+```
 
-Short guidance based on the file:
-- Treat past entries as a history signal, not immutable facts to reproduce.
-- Treat future entries as hard unavailability unless labeled "tentative".
-- If an entry spans a range, assume all days are affected unless a specific weekday filter is present.
+**Guidance:**
+- Past = history for fairness (don't repeat same late/pikett assignments)
+- Future = hard unavailability (unless labeled "tentative")
+- Date ranges like "2025-01-01:2025-01-05" mean all days inclusive
 """
 
 def build_system_prompt(
@@ -134,6 +129,8 @@ def build_system_prompt(
     today_iso: Optional[str] = None,
     planning_period: Optional[tuple[str, str]] = None
 ) -> str:
+    from utils import condense_schedule_payload
+    
     data = project.as_compact_json()
 
     # Build planning period context
@@ -167,13 +164,12 @@ Weekdays included: {', '.join(set(weekdays))}
     compiled = sys + "\n\nData:\n" + json_block(data)
 
     if schedule_payload:
-        # Filter out fairness_hints and members from the payload
-        filtered_payload = {k: v for k, v in schedule_payload.items() 
-                           if k not in ["fairness_hints", "members"]}
+        # Use condensed format to save tokens
+        condensed = condense_schedule_payload(schedule_payload)
         
         addendum = SCHEDULE_ADDENDUM_TEMPLATE.format(
             today=today_iso or "unknown",
-            schedule_json=json_block(filtered_payload)
+            schedule_json=json.dumps(condensed, ensure_ascii=False, separators=(',', ':'))  # No indentation, compact JSON
         )
         compiled += "\n\n" + addendum
 

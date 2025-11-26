@@ -484,6 +484,344 @@ def _compute_fairness_hints(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     return counts
 
 # ----------------------------
+# Token-Saving: Condensed Schedule Format
+# ----------------------------
+def condense_schedule_payload(schedule_payload: Dict[str, Any], max_past_days: int = 28) -> Dict[str, Any]:
+    """
+    Condense schedule payload to save ~50-70% tokens for LLM context.
+    
+    Strategies:
+    1. Group consecutive same-type entries per employee into ranges
+    2. Use short field names (e -> employee, d -> dates, t -> type, etc.)
+    3. Limit past entries to recent history only
+    4. Remove redundant fields (email, group, shared, color_code for context)
+    5. Aggregate shift patterns instead of listing each day
+    
+    Returns compact format:
+    {
+        "m": {"today": "2025-01-15", "past_days": 28},
+        "p": [  # past - grouped by employee
+            {"e": "Smith, John", "shifts": [
+                {"r": "Op Lead", "t": "07:00-16:00", "d": ["2025-01-01", "2025-01-02", "2025-01-03"]},
+                {"r": "Dispatcher", "t": "10:00-19:00", "d": ["2025-01-07"]}
+            ]},
+            {"e": "Doe, Jane", "off": [
+                {"r": "Ferien", "d": "2025-01-05:2025-01-10"},  # range format
+                {"r": "Krank", "d": ["2025-01-14"]}
+            ]}
+        ],
+        "f": [  # future - same format
+        ]
+    }
+    """
+    from datetime import datetime, timedelta
+    
+    today_str = schedule_payload.get("meta", {}).get("today")
+    if today_str:
+        today = datetime.fromisoformat(today_str).date()
+    else:
+        today = date.today()
+    
+    cutoff_date = today - timedelta(days=max_past_days)
+    
+    past_entries = schedule_payload.get("past_entries", [])
+    future_entries = schedule_payload.get("future_entries", [])
+    
+    # Filter past entries to recent only
+    filtered_past = []
+    for entry in past_entries:
+        entry_date_str = entry.get("start_date") or entry.get("date")
+        if entry_date_str:
+            try:
+                entry_date = datetime.fromisoformat(entry_date_str).date()
+                if entry_date >= cutoff_date:
+                    filtered_past.append(entry)
+            except:
+                pass
+    
+    def group_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Group entries by employee, then by type/role pattern"""
+        from collections import defaultdict
+        
+        # Group by employee
+        by_employee: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for entry in entries:
+            emp = entry.get("employee") or entry.get("employee_name", "Unknown")
+            by_employee[emp].append(entry)
+        
+        result = []
+        for emp, emp_entries in by_employee.items():
+            emp_data = {"e": emp}
+            
+            # Separate shifts and time-off
+            shifts = [e for e in emp_entries if e.get("entry_type") != "time_off"]
+            time_offs = [e for e in emp_entries if e.get("entry_type") == "time_off"]
+            
+            if shifts:
+                emp_data["s"] = _condense_shifts(shifts)
+            if time_offs:
+                emp_data["o"] = _condense_timeoffs(time_offs)
+            
+            result.append(emp_data)
+        
+        return result
+    
+    return {
+        "m": {
+            "today": today_str,
+            "past_days": max_past_days,
+            "past_n": len(filtered_past),
+            "future_n": len(future_entries)
+        },
+        "p": group_entries(filtered_past),
+        "f": group_entries(future_entries)
+    }
+
+
+def _condense_shifts(shifts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Condense shift entries by grouping same role+time combinations.
+    
+    Input: list of individual shift entries
+    Output: list of {r: role, t: time_range, d: [dates] or d: "start:end"}
+    """
+    from collections import defaultdict
+    
+    # Group by role+time pattern
+    patterns: Dict[str, List[str]] = defaultdict(list)
+    
+    for shift in shifts:
+        # Extract key info
+        role = shift.get("notes") or shift.get("label") or shift.get("role") or "Shift"
+        start_time = shift.get("start_time") or shift.get("start") or ""
+        end_time = shift.get("end_time") or shift.get("end") or ""
+        date_str = shift.get("start_date") or shift.get("date") or ""
+        
+        # Create pattern key: role|start-end
+        time_str = f"{start_time}-{end_time}" if start_time and end_time else ""
+        pattern_key = f"{role}|{time_str}"
+        
+        if date_str:
+            patterns[pattern_key].append(date_str)
+    
+    # Convert to condensed format
+    result = []
+    for pattern_key, dates in patterns.items():
+        parts = pattern_key.split("|")
+        role = parts[0]
+        time_range = parts[1] if len(parts) > 1 else ""
+        
+        # Sort dates and try to compress consecutive dates into ranges
+        sorted_dates = sorted(set(dates))
+        compressed_dates = _compress_date_list(sorted_dates)
+        
+        entry = {"r": role}
+        if time_range:
+            entry["t"] = time_range
+        entry["d"] = compressed_dates
+        
+        result.append(entry)
+    
+    return result
+
+
+def _condense_timeoffs(time_offs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Condense time-off entries by grouping same reason.
+    
+    Input: list of individual time-off entries  
+    Output: list of {r: reason, d: [dates] or d: "start:end"}
+    """
+    from collections import defaultdict
+    
+    # Group by reason
+    by_reason: Dict[str, List[str]] = defaultdict(list)
+    
+    for off in time_offs:
+        reason = off.get("reason") or off.get("type") or "Off"
+        date_str = off.get("start_date") or off.get("date") or ""
+        
+        if date_str:
+            by_reason[reason].append(date_str)
+    
+    # Convert to condensed format
+    result = []
+    for reason, dates in by_reason.items():
+        sorted_dates = sorted(set(dates))
+        compressed_dates = _compress_date_list(sorted_dates)
+        
+        result.append({"r": reason, "d": compressed_dates})
+    
+    return result
+
+
+def _compress_date_list(sorted_dates: List[str]) -> Any:
+    """
+    Compress a sorted list of dates into ranges where possible.
+    
+    Examples:
+    - ["2025-01-01", "2025-01-02", "2025-01-03"] -> "2025-01-01:2025-01-03"
+    - ["2025-01-01", "2025-01-03"] -> ["2025-01-01", "2025-01-03"]
+    - ["2025-01-01"] -> "2025-01-01"
+    """
+    if not sorted_dates:
+        return []
+    
+    if len(sorted_dates) == 1:
+        return sorted_dates[0]
+    
+    from datetime import datetime, timedelta
+    
+    # Try to find consecutive ranges
+    ranges = []
+    current_range_start = None
+    current_range_end = None
+    prev_date = None
+    
+    for date_str in sorted_dates:
+        try:
+            current_date = datetime.fromisoformat(date_str).date()
+        except:
+            # Can't parse, just add as-is
+            if current_range_start:
+                ranges.append(_format_range(current_range_start, current_range_end))
+                current_range_start = None
+                current_range_end = None
+            ranges.append(date_str)
+            prev_date = None
+            continue
+        
+        if prev_date is None:
+            current_range_start = current_date
+            current_range_end = current_date
+        elif (current_date - prev_date).days == 1:
+            # Consecutive - extend range
+            current_range_end = current_date
+        else:
+            # Gap - close current range, start new one
+            ranges.append(_format_range(current_range_start, current_range_end))
+            current_range_start = current_date
+            current_range_end = current_date
+        
+        prev_date = current_date
+    
+    # Close final range
+    if current_range_start:
+        ranges.append(_format_range(current_range_start, current_range_end))
+    
+    # Return single item if only one range
+    if len(ranges) == 1:
+        return ranges[0]
+    return ranges
+
+
+def _format_range(start_date: date, end_date: date) -> str:
+    """Format a date range as 'start:end' or just 'date' if same day"""
+    start_str = start_date.isoformat()
+    end_str = end_date.isoformat()
+    
+    if start_str == end_str:
+        return start_str
+    return f"{start_str}:{end_str}"
+
+
+def expand_compact_llm_response(compact_response: Dict[str, Any], project: Project) -> Dict[str, Any]:
+    """
+    Expand a compact LLM response to full Teams-compatible format.
+    
+    Input (compact):
+    {
+        "s": [
+            {"e": "Name", "m": "email", "d": "2025-01-01", "st": "07:00", "et": "16:00", "c": "1. Weiß", "l": "Op Lead", "r": "Contact Team"}
+        ],
+        "n": "notes"
+    }
+    
+    Output (full):
+    {
+        "shifts": [
+            {"employee_name": "Name", "employee_email": "email", "group": "Service Desk", ...}
+        ],
+        "notes": "notes"
+    }
+    """
+    # Check if already in full format
+    if "shifts" in compact_response:
+        return compact_response
+    
+    # Build employee lookup for missing emails/groups
+    emp_lookup: Dict[str, Dict[str, Any]] = {}
+    for emp in project.employees:
+        emp_lookup[emp.name.lower()] = {
+            "email": emp.email,
+            "group": emp.group or "Service Desk"
+        }
+    
+    shifts = []
+    compact_shifts = compact_response.get("s", [])
+    
+    for cs in compact_shifts:
+        # Get employee info
+        emp_name = cs.get("e", "")
+        emp_info = emp_lookup.get(emp_name.lower(), {})
+        
+        # Parse date - handle both YYYY-MM-DD and M/D/YYYY
+        date_str = cs.get("d", "")
+        try:
+            # Try ISO format first
+            d = datetime.fromisoformat(date_str).date()
+            formatted_date = f"{d.month}/{d.day}/{d.year}"
+        except:
+            # Already in M/D/YYYY or other format
+            formatted_date = date_str
+        
+        full_entry = {
+            "employee_name": emp_name,
+            "employee_email": cs.get("m") or emp_info.get("email", ""),
+            "group": cs.get("g") or emp_info.get("group", "Service Desk"),
+            "start_date": formatted_date,
+            "start_time": cs.get("st", ""),
+            "end_date": formatted_date,
+            "end_time": cs.get("et", ""),
+            "color_code": cs.get("c", "1. Weiß"),
+            "label": cs.get("l", ""),
+            "unpaid_break": cs.get("b"),
+            "notes": cs.get("r", ""),
+            "shared": "1. Geteilt"
+        }
+        shifts.append(full_entry)
+    
+    return {
+        "shifts": shifts,
+        "notes": compact_response.get("n", "")
+    }
+
+
+def normalize_llm_response(raw_response: Dict[str, Any], project: Project) -> Dict[str, Any]:
+    """
+    Normalize LLM response to standard format, handling both compact and full formats.
+    
+    This is the main entry point for processing LLM output.
+    """
+    # Expand compact format if needed
+    expanded = expand_compact_llm_response(raw_response, project)
+    
+    # Validate and normalize dates
+    for shift in expanded.get("shifts", []):
+        # Ensure color_code has proper format
+        color = shift.get("color_code", "1")
+        if color and not color.startswith(tuple(str(i) + "." for i in range(1, 14))):
+            # Just a number, add the German name
+            color_names = {
+                "1": "1. Weiß", "2": "2. Blau", "3": "3. Grün", "4": "4. Lila",
+                "5": "5. Rosa", "6": "6. Gelb", "8": "8. Dunkelblau", "9": "9. Dunkelgrün",
+                "10": "10. Dunkelviolett", "11": "11. Dunkelrosa", "12": "12. Dunkelgelb", "13": "13. Grau"
+            }
+            shift["color_code"] = color_names.get(str(color).strip(), "1. Weiß")
+    
+    return expanded
+
+# ----------------------------
 # Dual-file Teams import
 # ----------------------------
 def parse_dual_schedule_files(

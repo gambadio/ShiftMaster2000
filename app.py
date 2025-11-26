@@ -1903,35 +1903,42 @@ with tabs[8]:
                     
                     status_text.info("🤔 Model is thinking and generating...")
                     
-                    # Counters for periodic updates (to avoid too many rerenders)
-                    chunk_count = [0]  # Use list to allow modification in closure
+                    # Use local buffers instead of session state to avoid WebSocket issues
+                    content_buffer = []
+                    thinking_buffer = []
+                    chunk_count = [0]
                     thinking_count = [0]
+                    import time
+                    last_content_update = [time.time()]
+                    last_thinking_update = [time.time()]
                     
-                    # Define callbacks that update session state
+                    # Define callbacks with throttled UI updates
                     def update_thinking_stream(chunk: str):
-                        """Accumulate thinking output"""
-                        st.session_state.thinking_output += chunk
+                        """Accumulate thinking output - throttled updates"""
+                        thinking_buffer.append(chunk)
                         thinking_count[0] += 1
-                        # Update display every 5 chunks or if significant content
-                        if thinking_count[0] % 5 == 0 or len(chunk) > 50:
-                            thinking_area.text_area(
-                                "Reasoning:",
-                                value=st.session_state.thinking_output,
-                                height=300,
-                                disabled=True,
-                                key=f"think_{thinking_count[0]}"
-                            )
+                        now = time.time()
+                        # Only update every 0.5 seconds to avoid overwhelming Streamlit
+                        if now - last_thinking_update[0] > 0.5:
+                            last_thinking_update[0] = now
+                            try:
+                                thinking_area.markdown(f"```\n{''.join(thinking_buffer)[-3000:]}\n```")
+                            except:
+                                pass  # Ignore update errors during streaming
                     
                     def update_content_stream(chunk: str):
-                        """Accumulate content output"""
-                        st.session_state.streaming_output += chunk
+                        """Accumulate content output - throttled updates"""
+                        content_buffer.append(chunk)
                         chunk_count[0] += 1
-                        # Update display every 10 chunks or if it's a complete JSON object
-                        if chunk_count[0] % 10 == 0 or '}' in chunk or ']' in chunk:
-                            content_area.code(
-                                st.session_state.streaming_output, 
-                                language="json"
-                            )
+                        now = time.time()
+                        # Only update every 0.5 seconds to avoid overwhelming Streamlit
+                        if now - last_content_update[0] > 0.5:
+                            last_content_update[0] = now
+                            try:
+                                # Show last 5000 chars to keep UI responsive
+                                content_area.markdown(f"```json\n{''.join(content_buffer)[-5000:]}\n```")
+                            except:
+                                pass  # Ignore update errors during streaming
                     
                     # Run async streaming
                     async def stream_generation():
@@ -1951,20 +1958,23 @@ with tabs[8]:
                     
                     result = asyncio.run(stream_generation())
                     
+                    # Store final output in session state AFTER streaming completes
+                    st.session_state.thinking_output = "".join(thinking_buffer)
+                    st.session_state.streaming_output = "".join(content_buffer)
+                    
                     # Final update with complete content
                     if st.session_state.thinking_output:
                         thinking_area.text_area(
                             "Reasoning:",
                             value=st.session_state.thinking_output,
                             height=300,
-                            disabled=True,
-                            key="think_final"
+                            disabled=True
                         )
                     
                     if st.session_state.streaming_output:
                         content_area.code(st.session_state.streaming_output, language="json")
                     
-                    status_text.success("✅ Streaming complete!")
+                    status_text.success(f"✅ Streaming complete! ({chunk_count[0]} chunks received)")
                     
                 else:
                     # Non-streaming fallback
@@ -1988,11 +1998,11 @@ with tabs[8]:
                     notes: Optional[str] = None
                     try:
                         schedule_json = parse_json_response(result["content"])
-                        num_shifts = len(schedule_json.get("shifts", []))
+                        num_shifts = len(schedule_json.get("shifts", schedule_json.get("s", [])))
                         num_time_off = len(schedule_json.get("time_off", []))
                         log_debug_event(f"Parsed LLM JSON: {num_shifts} shifts, {num_time_off} time-off")
 
-                        entries, notes, parse_errors = parse_llm_schedule_output(schedule_json)
+                        entries, notes, parse_errors = parse_llm_schedule_output(schedule_json, project=st.session_state.project)
                         log_debug_event(f"Validated generated entries: {len(entries)} ok, {len(parse_errors)} errors")
 
                         st.session_state.last_generated_payload = schedule_json
