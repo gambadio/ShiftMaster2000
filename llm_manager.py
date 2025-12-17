@@ -226,7 +226,7 @@ async def _call_azure(
         # For reasoning models, add reasoning_effort if specified
         # Azure GPT-5 supports: minimal, low, medium, high (default: medium)
         if config.reasoning_effort:
-            print(f"🔍 Adding reasoning_effort for Azure: {config.reasoning_effort}")
+            print(f"[DEBUG] Adding reasoning_effort for Azure: {config.reasoning_effort}")
             params["reasoning_effort"] = config.reasoning_effort
 
     # Add stream_options to get usage in final chunk (for streaming)
@@ -306,12 +306,12 @@ async def _stream_openai_style(
     usage_info = {}
     model_name = params.get("model", "unknown")
     
-    print(f"🔍 Starting stream for model: {model_name}")
-    print(f"🔍 Stream params: {list(params.keys())}")
+    print(f"[DEBUG] Starting stream for model: {model_name}")
+    print(f"[DEBUG] Stream params: {list(params.keys())}")
 
     try:
         stream = client.chat.completions.create(**params)
-        print("🔍 Stream object created successfully")
+        print("[DEBUG] Stream object created successfully")
         
         chunk_count = 0
         for chunk in stream:
@@ -319,7 +319,7 @@ async def _stream_openai_style(
             
             # Debug first few chunks and every 50th chunk
             if chunk_count <= 3 or chunk_count % 50 == 0:
-                print(f"🔍 Chunk #{chunk_count}")
+                print(f"[DEBUG] Chunk #{chunk_count}")
             
             if chunk.choices:
                 delta = chunk.choices[0].delta
@@ -330,7 +330,7 @@ async def _stream_openai_style(
                     if on_thinking:
                         on_thinking(delta.reasoning_content)
                     if chunk_count <= 5:
-                        print(f"🧠 Reasoning content: {delta.reasoning_content[:100]}")
+                        print(f"[REASONING] content: {delta.reasoning_content[:100]}")
 
                 # Handle reasoning field (OpenRouter format)
                 if hasattr(delta, "reasoning") and delta.reasoning:
@@ -338,7 +338,7 @@ async def _stream_openai_style(
                     if on_thinking:
                         on_thinking(delta.reasoning)
                     if chunk_count <= 5:
-                        print(f"🧠 Reasoning field: {delta.reasoning[:100]}")
+                        print(f"[REASONING] field: {delta.reasoning[:100]}")
 
                 # Handle regular content
                 if hasattr(delta, "content") and delta.content:
@@ -357,12 +357,12 @@ async def _stream_openai_style(
                     details = chunk.usage.completion_tokens_details
                     if hasattr(details, "reasoning_tokens"):
                         usage_info["reasoning_tokens"] = details.reasoning_tokens
-                        print(f"🔍 Reasoning tokens: {details.reasoning_tokens}")
+                        print(f"[DEBUG] Reasoning tokens: {details.reasoning_tokens}")
 
-        print(f"🔍 Stream complete: {chunk_count} chunks, {len(full_content)} content pieces, {len(full_reasoning)} reasoning pieces")
+        print(f"[DEBUG] Stream complete: {chunk_count} chunks, {len(full_content)} content pieces, {len(full_reasoning)} reasoning pieces")
         
     except Exception as e:
-        print(f"❌ Stream error: {type(e).__name__}: {e}")
+        print(f"[ERROR] Stream error: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         raise
