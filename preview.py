@@ -82,11 +82,30 @@ def render_calendar_preview(
     # Initialize session state for calendar view offset (weeks from start)
     view_key = f"calendar_view_offset_{key_suffix}"
     jump_date_key = f"calendar_jump_date_{key_suffix}"
+    last_jump_key = f"calendar_last_jump_{key_suffix}"
     
     if view_key not in st.session_state:
         st.session_state[view_key] = 0
 
-    # Navigation controls - row 1: buttons
+    # Calculate current view start
+    days_per_view = 7
+    offset_start = start_date + timedelta(days=st.session_state[view_key] * days_per_view)
+    days_since_monday = offset_start.weekday()
+    current_view_start = offset_start - timedelta(days=days_since_monday)
+
+    # Callback for date picker to avoid infinite rerun loop
+    def on_date_jump():
+        selected = st.session_state[jump_date_key]
+        # Calculate the Monday of the selected date's week
+        days_since_monday = selected.weekday()
+        target_week_start = selected - timedelta(days=days_since_monday)
+        # Only update if it's a different week
+        if target_week_start != current_view_start:
+            days_diff = (target_week_start - start_date).days
+            st.session_state[view_key] = days_diff // 7
+            st.session_state[last_jump_key] = target_week_start
+
+    # Navigation controls
     col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
 
     with col1:
@@ -113,28 +132,15 @@ def render_calendar_preview(
             st.session_state[view_key] = days_diff // 7
             st.rerun()
 
-    # Calculate current view start for date picker default
-    days_per_view = 7
-    offset_start = start_date + timedelta(days=st.session_state[view_key] * days_per_view)
-    days_since_monday = offset_start.weekday()
-    current_view_start = offset_start - timedelta(days=days_since_monday)
-
     with col4:
-        # Date picker for jumping to any week
-        jump_date = st.date_input(
+        # Date picker for jumping to any week - use on_change callback
+        st.date_input(
             "Jump to date",
             value=current_view_start,
             key=jump_date_key,
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            on_change=on_date_jump
         )
-        # Check if user selected a different date
-        if jump_date != current_view_start:
-            # Navigate to the week containing the selected date
-            days_since_monday = jump_date.weekday()
-            target_week_start = jump_date - timedelta(days=days_since_monday)
-            days_diff = (target_week_start - start_date).days
-            st.session_state[view_key] = days_diff // 7
-            st.rerun()
 
     # Use already calculated view window
     view_start = current_view_start
