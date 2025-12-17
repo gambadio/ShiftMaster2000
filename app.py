@@ -36,6 +36,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# App iteration version (manually bumped by developer)
+APP_ITERATION_VERSION = "0.3"
+
 # Remove top padding/margin and hide deploy button
 st.markdown("""
     <style>
@@ -131,6 +134,8 @@ if "last_autosave_time" not in st.session_state:
     st.session_state.last_autosave_time = None
 if "autosave_status" not in st.session_state:
     st.session_state.autosave_status = None
+if "show_info" not in st.session_state:
+    st.session_state.show_info = False
 
 
 CHAT_FEATURE_ENABLED = False
@@ -209,6 +214,23 @@ if project.planning_period is None:
 with st.sidebar:
     st.title(f"🗓️ {get_text('app_title', lang)}")
     st.caption(get_text('app_caption', lang))
+
+    if st.button("ℹ️ Info", use_container_width=True):
+        st.session_state.show_info = not st.session_state.show_info
+
+    if st.session_state.show_info:
+        st.markdown(
+            "\n".join(
+                [
+                    f"**Iteration:** v{APP_ITERATION_VERSION}",
+                    "**Entwickler:** Ricardo Kupper",
+                    "**Lizenzinhaber:** Group IT Service Desk, Migros Genossenschafts Bund (MGB)",
+                    "**Lizenz:** Proprietär / Internal Use Only (keine Open-Source-Lizenz)",
+                    "**Hinweis:** Verteilung/Weitergabe oder kommerzieller Vertrieb sind ohne ausdrückliche Freigabe nicht erlaubt.",
+                    "**Versionierung:** Bei weiteren Anpassungen wird die Iterationsversion erhöht.",
+                ]
+            )
+        )
 
     # Language selector
     language_options = {"English": "en", "Deutsch": "de"}

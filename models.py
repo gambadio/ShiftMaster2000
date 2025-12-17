@@ -264,7 +264,7 @@ class ScheduleState(BaseModel):
 
 class Project(BaseModel):
     name: str = "Untitled"
-    version: str = "2.0"  # Updated version
+    version: str = "1.0"  # Default project version
     employees: List[Employee] = Field(default_factory=list)
     shifts: List[ShiftTemplate] = Field(default_factory=list)
     global_rules: RuleSet = Field(default_factory=RuleSet)
