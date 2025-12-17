@@ -175,12 +175,25 @@ def render_calendar_preview(
             
         # Handle multi-day entries (especially time-off periods like vacations)
         entry_end = _parse_entry_date(getattr(entry, 'end_date', None))
-        if not entry_end or entry_end == entry_start:
-            # Single day entry
+        
+        # Check if this is an overnight shift ending at midnight (00:00)
+        # These have end_date = start_date + 1 day, but should only show on start_date
+        is_overnight_shift = False
+        if entry_end and entry_end != entry_start:
+            end_time = getattr(entry, 'end_time', None)
+            if end_time:
+                # Normalize end_time - extract HH:MM
+                end_time_clean = end_time.strip()[:5] if len(end_time.strip()) >= 5 else end_time.strip()
+                # Check if ends at midnight (00:00) and is exactly 1 day difference
+                if end_time_clean in ("00:00", "0:00", "24:00") and (entry_end - entry_start).days == 1:
+                    is_overnight_shift = True
+        
+        if not entry_end or entry_end == entry_start or is_overnight_shift:
+            # Single day entry OR overnight shift ending at midnight
             if entry_start in dates_set:
                 emp_grid[entry_start].append(entry)
         else:
-            # Multi-day entry: add to every day in range that's visible
+            # True multi-day entry (like vacations): add to every day in range that's visible
             current = entry_start
             while current <= entry_end:
                 if current in dates_set:
