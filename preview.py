@@ -81,10 +81,12 @@ def render_calendar_preview(
 
     # Initialize session state for calendar view offset (weeks from start)
     view_key = f"calendar_view_offset_{key_suffix}"
+    jump_date_key = f"calendar_jump_date_{key_suffix}"
+    
     if view_key not in st.session_state:
         st.session_state[view_key] = 0
 
-    # Navigation controls
+    # Navigation controls - row 1: buttons
     col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
 
     with col1:
@@ -111,20 +113,35 @@ def render_calendar_preview(
             st.session_state[view_key] = days_diff // 7
             st.rerun()
 
-    # Calculate view window (7 days, Monday-Sunday)
-    # Indefinite navigation - no boundary restrictions
+    # Calculate current view start for date picker default
     days_per_view = 7
     offset_start = start_date + timedelta(days=st.session_state[view_key] * days_per_view)
-
-    # Align to week start (Monday)
-    days_since_monday = offset_start.weekday()  # 0 = Monday, 6 = Sunday
-    view_start = offset_start - timedelta(days=days_since_monday)
-    view_end = view_start + timedelta(days=6)  # Always show full week (Mon-Sun)
+    days_since_monday = offset_start.weekday()
+    current_view_start = offset_start - timedelta(days=days_since_monday)
 
     with col4:
-        # Show current week's date range instead of week number
-        # since navigation is now indefinite
-        st.caption(f"{view_start.strftime('%b %d')} - {view_end.strftime('%b %d, %Y')}")
+        # Date picker for jumping to any week
+        jump_date = st.date_input(
+            "Jump to date",
+            value=current_view_start,
+            key=jump_date_key,
+            label_visibility="collapsed"
+        )
+        # Check if user selected a different date
+        if jump_date != current_view_start:
+            # Navigate to the week containing the selected date
+            days_since_monday = jump_date.weekday()
+            target_week_start = jump_date - timedelta(days=days_since_monday)
+            days_diff = (target_week_start - start_date).days
+            st.session_state[view_key] = days_diff // 7
+            st.rerun()
+
+    # Use already calculated view window
+    view_start = current_view_start
+    view_end = view_start + timedelta(days=6)  # Always show full week (Mon-Sun)
+
+    # Show current week's date range
+    st.caption(f"📅 {view_start.strftime('%b %d')} - {view_end.strftime('%b %d, %Y')}")
 
     # Generate date range for current view (always 7 days)
     dates = [view_start + timedelta(days=i) for i in range(7)]
@@ -137,14 +154,32 @@ def render_calendar_preview(
         return
 
     # Build grid data: employee x date
-    grid_data = {}
-    for emp in employees:
-        grid_data[emp] = {d: [] for d in dates}
+    # Pre-create date set for O(1) lookup
+    dates_set = set(dates)
+    grid_data = {emp: {d: [] for d in dates} for emp in employees}
 
     for entry in schedule_entries:
-        entry_date = _parse_entry_date(entry.start_date)
-        if entry_date and entry_date in grid_data.get(entry.employee_name, {}):
-            grid_data[entry.employee_name][entry_date].append(entry)
+        emp_grid = grid_data.get(entry.employee_name)
+        if not emp_grid:
+            continue
+            
+        entry_start = _parse_entry_date(entry.start_date)
+        if not entry_start:
+            continue
+            
+        # Handle multi-day entries (especially time-off periods like vacations)
+        entry_end = _parse_entry_date(getattr(entry, 'end_date', None))
+        if not entry_end or entry_end == entry_start:
+            # Single day entry
+            if entry_start in dates_set:
+                emp_grid[entry_start].append(entry)
+        else:
+            # Multi-day entry: add to every day in range that's visible
+            current = entry_start
+            while current <= entry_end:
+                if current in dates_set:
+                    emp_grid[current].append(entry)
+                current += timedelta(days=1)
 
     # Render as a dataframe with colored cells
     st.caption(f"Showing {len(employees)} employees across {len(dates)} days")
@@ -278,25 +313,22 @@ def render_calendar_preview(
     </style>
     """)
 
-    # Calculate total hours per employee
-    employee_hours = {}
-    for emp in employees:
-        total_hours = 0
-        for entry in schedule_entries:
-            if entry.employee_name == emp and entry.entry_type == "shift":
-                if entry.start_time and entry.end_time:
-                    try:
-                        start = datetime.strptime(entry.start_time, "%H:%M")
-                        end = datetime.strptime(entry.end_time, "%H:%M")
-                        if end < start:
-                            end += timedelta(days=1)
-                        hours = (end - start).total_seconds() / 3600
-                        if entry.unpaid_break:
-                            hours -= entry.unpaid_break / 60
-                        total_hours += hours
-                    except:
-                        pass
-        employee_hours[emp] = total_hours
+    # Calculate total hours per employee in a single pass (O(n) instead of O(n*m))
+    employee_hours = {emp: 0.0 for emp in employees}
+    for entry in schedule_entries:
+        if entry.entry_type == "shift" and entry.employee_name in employee_hours:
+            if entry.start_time and entry.end_time:
+                try:
+                    start = datetime.strptime(entry.start_time[:5], "%H:%M")
+                    end = datetime.strptime(entry.end_time[:5], "%H:%M")
+                    if end < start:
+                        end += timedelta(days=1)
+                    hours = (end - start).total_seconds() / 3600
+                    if entry.unpaid_break:
+                        hours -= entry.unpaid_break / 60
+                    employee_hours[entry.employee_name] += hours
+                except:
+                    pass
 
     html_parts.append('<table class="teams-schedule">')
 
