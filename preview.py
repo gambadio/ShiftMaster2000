@@ -164,6 +164,25 @@ def render_calendar_preview(
     dates_set = set(dates)
     grid_data = {emp: {d: [] for d in dates} for emp in employees}
 
+    # Track seen entries to prevent duplicates
+    # Key: (employee_name, date, start_time, end_time, entry_type)
+    seen_entries: set = set()
+
+    def add_entry_to_grid(emp_grid: dict, target_date: date, entry) -> None:
+        """Add entry to grid if not already present (prevents duplicates)"""
+        # Create a unique key for this entry on this date
+        entry_key = (
+            entry.employee_name,
+            target_date.isoformat(),
+            getattr(entry, 'start_time', None),
+            getattr(entry, 'end_time', None),
+            entry.entry_type,
+            getattr(entry, 'notes', None) or getattr(entry, 'label', None)
+        )
+        if entry_key not in seen_entries:
+            seen_entries.add(entry_key)
+            emp_grid[target_date].append(entry)
+
     for entry in schedule_entries:
         emp_grid = grid_data.get(entry.employee_name)
         if not emp_grid:
@@ -175,29 +194,39 @@ def render_calendar_preview(
             
         # Handle multi-day entries (especially time-off periods like vacations)
         entry_end = _parse_entry_date(getattr(entry, 'end_date', None))
-        
-        # Check if this is an overnight shift ending at midnight (00:00)
-        # These have end_date = start_date + 1 day, but should only show on start_date
-        is_overnight_shift = False
-        if entry_end and entry_end != entry_start:
-            end_time = getattr(entry, 'end_time', None)
-            if end_time:
-                # Normalize end_time - extract HH:MM
-                end_time_clean = end_time.strip()[:5] if len(end_time.strip()) >= 5 else end_time.strip()
-                # Check if ends at midnight (00:00) and is exactly 1 day difference
-                if end_time_clean in ("00:00", "0:00", "24:00") and (entry_end - entry_start).days == 1:
-                    is_overnight_shift = True
-        
-        if not entry_end or entry_end == entry_start or is_overnight_shift:
-            # Single day entry OR overnight shift ending at midnight
+        end_time = getattr(entry, 'end_time', None)
+
+        # Normalize end_time - extract HH:MM
+        end_time_clean = None
+        if end_time:
+            end_time_clean = end_time.strip()[:5] if len(end_time.strip()) >= 5 else end_time.strip()
+
+        # Check if ends at midnight (00:00) - affects how we handle the end date
+        ends_at_midnight = end_time_clean in ("00:00", "0:00", "24:00") if end_time_clean else False
+
+        # Determine if this is a single-day entry or needs multi-day handling
+        if not entry_end or entry_end == entry_start:
+            # Single day entry (start and end date are the same)
             if entry_start in dates_set:
-                emp_grid[entry_start].append(entry)
+                add_entry_to_grid(emp_grid, entry_start, entry)
+        elif ends_at_midnight and (entry_end - entry_start).days == 1:
+            # Overnight shift OR 1-day time-off ending at midnight
+            # e.g., shift 17:00-00:00 OR holiday from Jan 1 00:00 to Jan 2 00:00
+            # Both should only show on the start date
+            if entry_start in dates_set:
+                add_entry_to_grid(emp_grid, entry_start, entry)
         else:
-            # True multi-day entry (like vacations): add to every day in range that's visible
+            # True multi-day entry (like vacations spanning multiple days)
+            # When end_time is 00:00, the end_date is exclusive (don't include it)
+            # e.g., vacation from Dec 15 to Dec 20 at 00:00 means Dec 15-19 inclusive
+            actual_end = entry_end
+            if ends_at_midnight:
+                actual_end = entry_end - timedelta(days=1)
+
             current = entry_start
-            while current <= entry_end:
+            while current <= actual_end:
                 if current in dates_set:
-                    emp_grid[current].append(entry)
+                    add_entry_to_grid(emp_grid, current, entry)
                 current += timedelta(days=1)
 
     # Render as a dataframe with colored cells
