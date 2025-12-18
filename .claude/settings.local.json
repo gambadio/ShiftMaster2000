@@ -4,7 +4,9 @@
       "Bash(build.bat)",
       "Bash(cmd.exe /c \"cd /d C:\\Users\\ricar\\OneDrive\\Documents\\New Coding\\ShiftMaster2000 && build.bat\")",
       "Bash(python3:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

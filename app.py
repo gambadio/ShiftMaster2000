@@ -1859,6 +1859,47 @@ with tabs[8]:
                 with st.expander("📝 Generation Notes", expanded=False):
                     st.text(notes)
 
+        # Experimental features section
+        with st.expander("🧪 Experimental Features", expanded=False):
+            st.markdown("**MiniZinc Constraint Optimization**")
+            st.caption(
+                "When enabled, the LLM can write and execute MiniZinc constraint models "
+                "to optimize shift assignments. Requires MiniZinc to be installed on the system."
+            )
+
+            use_minizinc = st.checkbox(
+                "Use MiniZinc for optimization",
+                value=project.llm_config.enable_minizinc_tool,
+                help="Allow the LLM to use MiniZinc solver for complex constraint satisfaction"
+            )
+
+            if use_minizinc != project.llm_config.enable_minizinc_tool:
+                project.llm_config.enable_minizinc_tool = use_minizinc
+                auto_save_if_enabled()
+
+            if use_minizinc:
+                # Check if MiniZinc is available
+                try:
+                    from minizinc_tool import check_minizinc_available
+                    available, msg = check_minizinc_available()
+                    if available:
+                        st.success(f"✅ {msg}")
+                    else:
+                        st.warning(f"⚠️ {msg}")
+                except ImportError:
+                    st.warning("⚠️ minizinc_tool module not available")
+
+                minizinc_timeout = st.number_input(
+                    "MiniZinc solver timeout (seconds)",
+                    min_value=5,
+                    max_value=300,
+                    value=project.llm_config.minizinc_timeout,
+                    help="Maximum time for MiniZinc solver to find a solution"
+                )
+                if minizinc_timeout != project.llm_config.minizinc_timeout:
+                    project.llm_config.minizinc_timeout = minizinc_timeout
+                    auto_save_if_enabled()
+
         output_container = st.container()
         generated_now = False
 
@@ -1891,18 +1932,29 @@ with tabs[8]:
                 # Use async with streaming if enabled
                 if project.llm_config.enable_streaming:
                     import asyncio
-                    from llm_manager import call_llm_with_reasoning
-                    
+                    from llm_manager import call_llm_with_reasoning, call_llm_with_tools
+
                     # Create containers for live output
                     status_text = st.empty()
                     thinking_expander = st.expander("🧠 Model Thinking (Live Stream)", expanded=True)
                     content_expander = st.expander("📝 Generated Content (Live Stream)", expanded=True)
-                    
+
+                    # Tool calls expander (only shown if MiniZinc is enabled)
+                    tool_calls_expander = None
+                    tool_calls_area = None
+                    tool_calls_buffer = []
+                    if project.llm_config.enable_minizinc_tool:
+                        tool_calls_expander = st.expander("🔧 Tool Calls (MiniZinc)", expanded=True)
+                        tool_calls_area = tool_calls_expander.empty()
+
                     thinking_area = thinking_expander.empty()
                     content_area = content_expander.empty()
-                    
-                    status_text.info("🤔 Model is thinking and generating...")
-                    
+
+                    if project.llm_config.enable_minizinc_tool:
+                        status_text.info("🤔 Model is thinking and generating (with MiniZinc tool access)...")
+                    else:
+                        status_text.info("🤔 Model is thinking and generating...")
+
                     # Use local buffers instead of session state to avoid WebSocket issues
                     content_buffer = []
                     thinking_buffer = []
@@ -1911,7 +1963,7 @@ with tabs[8]:
                     import time
                     last_content_update = [time.time()]
                     last_thinking_update = [time.time()]
-                    
+
                     # Define callbacks with throttled UI updates
                     def update_thinking_stream(chunk: str):
                         """Accumulate thinking output - throttled updates"""
@@ -1925,7 +1977,7 @@ with tabs[8]:
                                 thinking_area.markdown(f"```\n{''.join(thinking_buffer)[-3000:]}\n```")
                             except:
                                 pass  # Ignore update errors during streaming
-                    
+
                     def update_content_stream(chunk: str):
                         """Accumulate content output - throttled updates"""
                         content_buffer.append(chunk)
@@ -1939,23 +1991,53 @@ with tabs[8]:
                                 content_area.markdown(f"```json\n{''.join(content_buffer)[-5000:]}\n```")
                             except:
                                 pass  # Ignore update errors during streaming
-                    
-                    # Run async streaming
+
+                    def update_tool_call(tool_name: str, tool_args: str):
+                        """Track tool calls for UI display"""
+                        tool_calls_buffer.append({
+                            "name": tool_name,
+                            "args": tool_args[:500] + "..." if len(tool_args) > 500 else tool_args
+                        })
+                        if tool_calls_area:
+                            try:
+                                display = "\n\n".join([
+                                    f"**{tc['name']}**\n```\n{tc['args']}\n```"
+                                    for tc in tool_calls_buffer
+                                ])
+                                tool_calls_area.markdown(display)
+                            except:
+                                pass
+
+                    # Run async generation (with or without tools)
                     async def stream_generation():
-                        result = await call_llm_with_reasoning(
-                            prompt=prompt,
-                            config=project.llm_config,
-                            user_message=(
-                                "Generate the COMPLETE schedule now for the entire planning period. "
-                                "You MUST produce ALL shifts for ALL employees for ALL days in a SINGLE response. "
-                                "Do NOT summarize. Do NOT ask if I want more details. Do NOT say 'let me know if you want me to continue'. "
-                                "Output the FULL JSON with every single shift assignment. This is a one-shot generation - there is no follow-up conversation."
-                            ),
-                            on_chunk=update_content_stream,
-                            on_thinking=update_thinking_stream
+                        user_msg = (
+                            "Generate the COMPLETE schedule now for the entire planning period. "
+                            "You MUST produce ALL shifts for ALL employees for ALL days in a SINGLE response. "
+                            "Do NOT summarize. Do NOT ask if I want more details. Do NOT say 'let me know if you want me to continue'. "
+                            "Output the FULL JSON with every single shift assignment. This is a one-shot generation - there is no follow-up conversation."
                         )
+
+                        if project.llm_config.enable_minizinc_tool:
+                            # Use tool calling with MiniZinc
+                            result = await call_llm_with_tools(
+                                prompt=prompt,
+                                config=project.llm_config,
+                                user_message=user_msg,
+                                on_chunk=update_content_stream,
+                                on_thinking=update_thinking_stream,
+                                on_tool_call=update_tool_call
+                            )
+                        else:
+                            # Regular call without tools
+                            result = await call_llm_with_reasoning(
+                                prompt=prompt,
+                                config=project.llm_config,
+                                user_message=user_msg,
+                                on_chunk=update_content_stream,
+                                on_thinking=update_thinking_stream
+                            )
                         return result
-                    
+
                     result = asyncio.run(stream_generation())
                     
                     # Store final output in session state AFTER streaming completes
@@ -1978,17 +2060,36 @@ with tabs[8]:
                     
                 else:
                     # Non-streaming fallback
-                    with st.spinner("🤔 Generating schedule..."):
-                        result = call_llm_sync(
-                            prompt, 
-                            project.llm_config, 
-                            (
-                                "Generate the COMPLETE schedule now for the entire planning period. "
-                                "You MUST produce ALL shifts for ALL employees for ALL days in a SINGLE response. "
-                                "Do NOT summarize. Do NOT ask if I want more details. Do NOT say 'let me know if you want me to continue'. "
-                                "Output the FULL JSON with every single shift assignment. This is a one-shot generation - there is no follow-up conversation."
+                    from llm_manager import call_llm_with_tools_sync
+
+                    user_msg = (
+                        "Generate the COMPLETE schedule now for the entire planning period. "
+                        "You MUST produce ALL shifts for ALL employees for ALL days in a SINGLE response. "
+                        "Do NOT summarize. Do NOT ask if I want more details. Do NOT say 'let me know if you want me to continue'. "
+                        "Output the FULL JSON with every single shift assignment. This is a one-shot generation - there is no follow-up conversation."
+                    )
+
+                    if project.llm_config.enable_minizinc_tool:
+                        with st.spinner("🤔 Generating schedule (with MiniZinc tool access)..."):
+                            result = call_llm_with_tools_sync(
+                                prompt,
+                                project.llm_config,
+                                user_msg
                             )
-                        )
+                            # Display tool calls if any
+                            if result.get("tool_calls"):
+                                with st.expander("🔧 Tool Calls (MiniZinc)", expanded=False):
+                                    for tc in result["tool_calls"]:
+                                        st.markdown(f"**{tc['name']}**")
+                                        st.code(tc['arguments'][:1000], language="json")
+                                        st.write(f"Result: success={tc['result'].get('success', False)}")
+                    else:
+                        with st.spinner("🤔 Generating schedule..."):
+                            result = call_llm_sync(
+                                prompt,
+                                project.llm_config,
+                                user_msg
+                            )
                 st.session_state.generated_schedule = result
 
                 with output_container:
@@ -2490,6 +2591,100 @@ with tabs[10]:
                 except Exception as e:
                     st.error(f"Export failed: {e}")
                     st.exception(e)
+
+        # PDF Export Section
+        st.markdown("---")
+        st.markdown("### PDF Export (Experimental)")
+        st.caption("Export the calendar preview as a PDF document")
+
+        # Get date range from entries
+        import pandas as pd
+        pdf_dates = []
+        for e in entries:
+            try:
+                dt = pd.to_datetime(e.start_date).date()
+                pdf_dates.append(dt)
+            except:
+                pass
+
+        if pdf_dates:
+            pdf_min_date = min(pdf_dates)
+            pdf_max_date = max(pdf_dates)
+
+            pdf_col1, pdf_col2 = st.columns(2)
+            with pdf_col1:
+                pdf_start = st.date_input(
+                    "Von (Start)",
+                    value=pdf_min_date,
+                    min_value=pdf_min_date,
+                    max_value=pdf_max_date,
+                    key="pdf_export_start"
+                )
+            with pdf_col2:
+                pdf_end = st.date_input(
+                    "Bis (End)",
+                    value=pdf_max_date,
+                    min_value=pdf_min_date,
+                    max_value=pdf_max_date,
+                    key="pdf_export_end"
+                )
+
+            if st.button("Export as PDF", key="export_pdf_btn"):
+                try:
+                    from export_pdf import export_calendar_to_pdf
+                    from models import ScheduleEntry
+
+                    # Convert entries to ScheduleEntry objects
+                    schedule_entries = []
+                    for e in entries:
+                        if isinstance(e, ScheduleEntry):
+                            schedule_entries.append(e)
+                        else:
+                            schedule_entries.append(
+                                ScheduleEntry(
+                                    employee_name=e.employee_name,
+                                    employee_email=getattr(e, "employee_email", None),
+                                    group=getattr(e, "group", None),
+                                    start_date=e.start_date,
+                                    start_time=getattr(e, "start_time", None),
+                                    end_date=getattr(e, "end_date", e.start_date),
+                                    end_time=getattr(e, "end_time", None),
+                                    color_code=getattr(e, "color_code", None),
+                                    label=getattr(e, "label", None),
+                                    unpaid_break=getattr(e, "unpaid_break", None),
+                                    notes=getattr(e, "notes", None),
+                                    shared=getattr(e, "shared", "1. Geteilt"),
+                                    entry_type=e.entry_type,
+                                    reason=getattr(e, "reason", None),
+                                    source=getattr(e, "source", "uploaded"),
+                                )
+                            )
+
+                    with st.spinner("Generating PDF..."):
+                        pdf_bytes = export_calendar_to_pdf(
+                            schedule_entries,
+                            pdf_start,
+                            pdf_end,
+                            title="Schedule Preview"
+                        )
+
+                    st.success("PDF generated successfully!")
+                    st.download_button(
+                        label="Download PDF",
+                        data=pdf_bytes,
+                        file_name=f"schedule_{pdf_start.isoformat()}_{pdf_end.isoformat()}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+
+                except ImportError as e:
+                    st.error(f"WeasyPrint not installed: {e}")
+                    st.info("Install with: pip install weasyprint")
+                except Exception as e:
+                    st.error(f"PDF export failed: {e}")
+                    st.exception(e)
+        else:
+            st.info("No schedule entries with valid dates found for PDF export")
 
         st.markdown("---")
         st.markdown(f"### {get_text('manual_export', lang)}")

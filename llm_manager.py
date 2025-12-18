@@ -1,5 +1,5 @@
 """
-LLM Manager with Extended Thinking and Reasoning Support
+LLM Manager with Extended Thinking, Reasoning, and Tool Use Support
 
 Supports:
 - OpenAI (including o1/o3 reasoning models)
@@ -7,11 +7,13 @@ Supports:
 - Azure OpenAI
 - Claude (via Anthropic SDK with extended thinking)
 - Generic OpenAI-compatible endpoints
+- Tool/Function calling for MiniZinc integration (experimental)
 """
 
 from __future__ import annotations
 import asyncio
-from typing import Dict, Any, Optional, Callable
+import json
+from typing import Dict, Any, Optional, Callable, List
 
 from models import LLMConfig, ProviderType
 
@@ -407,3 +409,660 @@ def call_llm_sync(
 ) -> Dict[str, Any]:
     """Synchronous wrapper for call_llm_with_reasoning"""
     return asyncio.run(call_llm_with_reasoning(prompt, config, user_message))
+
+
+# =============================================================================
+# Tool Calling Support (Experimental - MiniZinc Integration)
+# =============================================================================
+
+async def call_llm_with_tools(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str = "Produce the schedule now.",
+    on_chunk: Optional[Callable[[str], None]] = None,
+    on_thinking: Optional[Callable[[str], None]] = None,
+    on_tool_call: Optional[Callable[[str, str], None]] = None,
+    max_tool_iterations: int = 5,
+) -> Dict[str, Any]:
+    """
+    Call LLM with tool/function calling support (agentic loop).
+
+    This enables the LLM to use tools like MiniZinc for constraint optimization
+    during schedule generation.
+
+    Args:
+        prompt: System prompt
+        config: LLM configuration
+        user_message: User message to send
+        on_chunk: Callback for streaming content chunks
+        on_thinking: Callback for thinking/reasoning chunks
+        on_tool_call: Callback for tool calls (tool_name, arguments_json)
+        max_tool_iterations: Maximum tool call iterations to prevent infinite loops
+
+    Returns:
+        Dict with 'content', 'thinking', 'usage', 'model', and 'tool_calls' keys
+    """
+    # Check if MiniZinc tool is enabled
+    if not config.enable_minizinc_tool:
+        # No tools enabled, use regular call
+        return await call_llm_with_reasoning(prompt, config, user_message, on_chunk, on_thinking)
+
+    # Import MiniZinc tool
+    try:
+        from minizinc_tool import MINIZINC_TOOL_SCHEMA, process_tool_call
+    except ImportError:
+        print("[WARN] minizinc_tool module not available, falling back to regular call")
+        return await call_llm_with_reasoning(prompt, config, user_message, on_chunk, on_thinking)
+
+    # Get tools list
+    tools = [MINIZINC_TOOL_SCHEMA]
+
+    # Route to appropriate provider with tools
+    provider = config.provider_config.provider
+
+    if provider == ProviderType.OPENAI:
+        return await _call_with_tools_openai(
+            prompt, config, user_message, tools,
+            on_chunk, on_thinking, on_tool_call, max_tool_iterations
+        )
+    elif provider == ProviderType.AZURE:
+        return await _call_with_tools_azure(
+            prompt, config, user_message, tools,
+            on_chunk, on_thinking, on_tool_call, max_tool_iterations
+        )
+    elif provider == ProviderType.OPENROUTER:
+        return await _call_with_tools_openrouter(
+            prompt, config, user_message, tools,
+            on_chunk, on_thinking, on_tool_call, max_tool_iterations
+        )
+    else:
+        # Generic/Custom - try OpenAI-style tool calling
+        return await _call_with_tools_generic(
+            prompt, config, user_message, tools,
+            on_chunk, on_thinking, on_tool_call, max_tool_iterations
+        )
+
+
+async def _call_with_tools_openai(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str,
+    tools: List[Dict[str, Any]],
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+    on_tool_call: Optional[Callable[[str, str], None]],
+    max_iterations: int,
+) -> Dict[str, Any]:
+    """Call OpenAI API with tool calling support"""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
+
+    from minizinc_tool import process_tool_call
+
+    client = OpenAI(api_key=config.provider_config.api_key)
+
+    # Initialize conversation
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_message}
+    ]
+
+    all_tool_calls = []
+    total_usage = {"input_tokens": 0, "output_tokens": 0}
+    final_content = ""
+    final_thinking = None
+    iteration = 0
+
+    while iteration < max_iterations:
+        iteration += 1
+        print(f"[TOOLS] Iteration {iteration}/{max_iterations}")
+
+        # Build request parameters
+        params: Dict[str, Any] = {
+            "model": config.provider_config.model,
+            "messages": messages,
+            "temperature": config.temperature,
+            "max_tokens": config.max_tokens,
+            "tools": tools,
+            "tool_choice": "auto",  # Let LLM decide when to use tools
+        }
+
+        # Add reasoning_effort for o1/o3 models
+        if config.reasoning_effort:
+            params["reasoning_effort"] = config.reasoning_effort
+
+        # Note: JSON mode cannot be used with tool calling
+        # We'll get JSON in the final response
+
+        # Make the call (non-streaming for tool calls for simplicity)
+        response = client.chat.completions.create(**params)
+
+        # Update usage
+        if response.usage:
+            total_usage["input_tokens"] += getattr(response.usage, "prompt_tokens", 0)
+            total_usage["output_tokens"] += getattr(response.usage, "completion_tokens", 0)
+
+        message = response.choices[0].message
+
+        # Check for tool calls
+        if message.tool_calls:
+            print(f"[TOOLS] LLM requested {len(message.tool_calls)} tool call(s)")
+
+            # Add assistant message with tool calls to conversation
+            messages.append({
+                "role": "assistant",
+                "content": message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    }
+                    for tc in message.tool_calls
+                ]
+            })
+
+            # Process each tool call
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = tool_call.function.arguments
+
+                print(f"[TOOLS] Executing: {tool_name}")
+
+                # Notify callback
+                if on_tool_call:
+                    on_tool_call(tool_name, tool_args)
+
+                # Execute the tool
+                tool_result = process_tool_call({
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": tool_args
+                    }
+                })
+
+                # Record the tool call
+                all_tool_calls.append({
+                    "name": tool_name,
+                    "arguments": tool_args,
+                    "result": tool_result
+                })
+
+                # Add tool result to conversation
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(tool_result)
+                })
+
+                print(f"[TOOLS] {tool_name} result: success={tool_result.get('success', False)}")
+
+        else:
+            # No tool calls - this is the final response
+            final_content = message.content or ""
+
+            # Extract reasoning if present
+            if hasattr(message, "reasoning_content") and message.reasoning_content:
+                final_thinking = message.reasoning_content
+
+            # Stream the final content if callback provided
+            if on_chunk and final_content:
+                on_chunk(final_content)
+
+            break
+
+    return {
+        "content": final_content,
+        "thinking": final_thinking,
+        "usage": total_usage,
+        "model": config.provider_config.model,
+        "tool_calls": all_tool_calls,
+    }
+
+
+async def _call_with_tools_azure(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str,
+    tools: List[Dict[str, Any]],
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+    on_tool_call: Optional[Callable[[str, str], None]],
+    max_iterations: int,
+) -> Dict[str, Any]:
+    """Call Azure OpenAI API with tool calling support"""
+    try:
+        from openai import AzureOpenAI
+    except ImportError:
+        raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
+
+    from minizinc_tool import process_tool_call
+
+    client = AzureOpenAI(
+        api_key=config.provider_config.api_key,
+        api_version=config.provider_config.api_version,
+        azure_endpoint=config.provider_config.azure_endpoint,
+    )
+
+    # Check if this is a reasoning model
+    model_name = config.provider_config.model.lower()
+    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'gpt-5'])
+
+    # Initialize conversation
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_message}
+    ]
+
+    all_tool_calls = []
+    total_usage = {"input_tokens": 0, "output_tokens": 0}
+    final_content = ""
+    final_thinking = None
+    iteration = 0
+
+    while iteration < max_iterations:
+        iteration += 1
+        print(f"[TOOLS-AZURE] Iteration {iteration}/{max_iterations}")
+
+        # Build request parameters
+        params: Dict[str, Any] = {
+            "model": config.provider_config.azure_deployment,
+            "messages": messages,
+            "max_completion_tokens": config.max_tokens,
+            "tools": tools,
+            "tool_choice": "auto",
+        }
+
+        # Only add temperature etc. for non-reasoning models
+        if not is_reasoning_model:
+            params["temperature"] = config.temperature
+            params["top_p"] = config.top_p
+        else:
+            if config.reasoning_effort:
+                params["reasoning_effort"] = config.reasoning_effort
+
+        # Make the call
+        response = client.chat.completions.create(**params)
+
+        # Update usage
+        if response.usage:
+            total_usage["input_tokens"] += getattr(response.usage, "prompt_tokens", 0)
+            total_usage["output_tokens"] += getattr(response.usage, "completion_tokens", 0)
+
+        message = response.choices[0].message
+
+        # Check for tool calls
+        if message.tool_calls:
+            print(f"[TOOLS-AZURE] LLM requested {len(message.tool_calls)} tool call(s)")
+
+            # Add assistant message with tool calls
+            messages.append({
+                "role": "assistant",
+                "content": message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    }
+                    for tc in message.tool_calls
+                ]
+            })
+
+            # Process each tool call
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = tool_call.function.arguments
+
+                print(f"[TOOLS-AZURE] Executing: {tool_name}")
+
+                if on_tool_call:
+                    on_tool_call(tool_name, tool_args)
+
+                tool_result = process_tool_call({
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": tool_args
+                    }
+                })
+
+                all_tool_calls.append({
+                    "name": tool_name,
+                    "arguments": tool_args,
+                    "result": tool_result
+                })
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(tool_result)
+                })
+
+                print(f"[TOOLS-AZURE] {tool_name} result: success={tool_result.get('success', False)}")
+
+        else:
+            final_content = message.content or ""
+
+            if hasattr(message, "reasoning_content") and message.reasoning_content:
+                final_thinking = message.reasoning_content
+
+            if on_chunk and final_content:
+                on_chunk(final_content)
+
+            break
+
+    return {
+        "content": final_content,
+        "thinking": final_thinking,
+        "usage": total_usage,
+        "model": config.provider_config.azure_deployment,
+        "tool_calls": all_tool_calls,
+    }
+
+
+async def _call_with_tools_openrouter(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str,
+    tools: List[Dict[str, Any]],
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+    on_tool_call: Optional[Callable[[str, str], None]],
+    max_iterations: int,
+) -> Dict[str, Any]:
+    """Call OpenRouter API with tool calling support"""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
+
+    from minizinc_tool import process_tool_call
+
+    # Build headers
+    headers = {}
+    if config.provider_config.http_referer:
+        headers["HTTP-Referer"] = config.provider_config.http_referer
+    if config.provider_config.x_title:
+        headers["X-Title"] = config.provider_config.x_title
+
+    client = OpenAI(
+        base_url=config.provider_config.get_base_url(),
+        api_key=config.provider_config.api_key,
+        default_headers=headers if headers else None,
+    )
+
+    # Initialize conversation
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_message}
+    ]
+
+    all_tool_calls = []
+    total_usage = {"input_tokens": 0, "output_tokens": 0}
+    final_content = ""
+    final_thinking = None
+    iteration = 0
+
+    while iteration < max_iterations:
+        iteration += 1
+        print(f"[TOOLS-OPENROUTER] Iteration {iteration}/{max_iterations}")
+
+        # Build request parameters
+        params: Dict[str, Any] = {
+            "model": config.provider_config.model,
+            "messages": messages,
+            "temperature": config.temperature,
+            "max_tokens": config.max_tokens,
+            "tools": tools,
+            "tool_choice": "auto",
+        }
+
+        # Add OpenRouter reasoning via extra_body
+        extra_body = {}
+        reasoning_config = {}
+        if config.reasoning_effort:
+            reasoning_config["effort"] = config.reasoning_effort
+        if config.reasoning_max_tokens:
+            reasoning_config["max_tokens"] = config.reasoning_max_tokens
+        if reasoning_config:
+            extra_body["reasoning"] = reasoning_config
+        if extra_body:
+            params["extra_body"] = extra_body
+
+        # Make the call
+        response = client.chat.completions.create(**params)
+
+        # Update usage
+        if response.usage:
+            total_usage["input_tokens"] += getattr(response.usage, "prompt_tokens", 0)
+            total_usage["output_tokens"] += getattr(response.usage, "completion_tokens", 0)
+
+        message = response.choices[0].message
+
+        # Check for tool calls
+        if message.tool_calls:
+            print(f"[TOOLS-OPENROUTER] LLM requested {len(message.tool_calls)} tool call(s)")
+
+            messages.append({
+                "role": "assistant",
+                "content": message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    }
+                    for tc in message.tool_calls
+                ]
+            })
+
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = tool_call.function.arguments
+
+                print(f"[TOOLS-OPENROUTER] Executing: {tool_name}")
+
+                if on_tool_call:
+                    on_tool_call(tool_name, tool_args)
+
+                tool_result = process_tool_call({
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": tool_args
+                    }
+                })
+
+                all_tool_calls.append({
+                    "name": tool_name,
+                    "arguments": tool_args,
+                    "result": tool_result
+                })
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(tool_result)
+                })
+
+                print(f"[TOOLS-OPENROUTER] {tool_name} result: success={tool_result.get('success', False)}")
+
+        else:
+            final_content = message.content or ""
+
+            if hasattr(message, "reasoning") and message.reasoning:
+                final_thinking = message.reasoning
+            elif hasattr(message, "reasoning_content") and message.reasoning_content:
+                final_thinking = message.reasoning_content
+
+            if on_chunk and final_content:
+                on_chunk(final_content)
+
+            break
+
+    return {
+        "content": final_content,
+        "thinking": final_thinking,
+        "usage": total_usage,
+        "model": config.provider_config.model,
+        "tool_calls": all_tool_calls,
+    }
+
+
+async def _call_with_tools_generic(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str,
+    tools: List[Dict[str, Any]],
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+    on_tool_call: Optional[Callable[[str, str], None]],
+    max_iterations: int,
+) -> Dict[str, Any]:
+    """Call generic OpenAI-compatible API with tool calling support"""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
+
+    from minizinc_tool import process_tool_call
+
+    client = OpenAI(
+        base_url=config.provider_config.base_url,
+        api_key=config.provider_config.api_key,
+    )
+
+    # Initialize conversation
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_message}
+    ]
+
+    all_tool_calls = []
+    total_usage = {"input_tokens": 0, "output_tokens": 0}
+    final_content = ""
+    final_thinking = None
+    iteration = 0
+
+    while iteration < max_iterations:
+        iteration += 1
+        print(f"[TOOLS-GENERIC] Iteration {iteration}/{max_iterations}")
+
+        params: Dict[str, Any] = {
+            "model": config.provider_config.model,
+            "messages": messages,
+            "temperature": config.temperature,
+            "max_tokens": config.max_tokens,
+            "tools": tools,
+            "tool_choice": "auto",
+        }
+
+        try:
+            response = client.chat.completions.create(**params)
+        except Exception as e:
+            # Some endpoints don't support tools - fall back to regular call
+            print(f"[TOOLS-GENERIC] Tool calling not supported: {e}")
+            print("[TOOLS-GENERIC] Falling back to regular call without tools")
+            return await _call_generic(prompt, config, user_message, on_chunk, on_thinking)
+
+        if response.usage:
+            total_usage["input_tokens"] += getattr(response.usage, "prompt_tokens", 0)
+            total_usage["output_tokens"] += getattr(response.usage, "completion_tokens", 0)
+
+        message = response.choices[0].message
+
+        if message.tool_calls:
+            print(f"[TOOLS-GENERIC] LLM requested {len(message.tool_calls)} tool call(s)")
+
+            messages.append({
+                "role": "assistant",
+                "content": message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    }
+                    for tc in message.tool_calls
+                ]
+            })
+
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = tool_call.function.arguments
+
+                print(f"[TOOLS-GENERIC] Executing: {tool_name}")
+
+                if on_tool_call:
+                    on_tool_call(tool_name, tool_args)
+
+                tool_result = process_tool_call({
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": tool_args
+                    }
+                })
+
+                all_tool_calls.append({
+                    "name": tool_name,
+                    "arguments": tool_args,
+                    "result": tool_result
+                })
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(tool_result)
+                })
+
+                print(f"[TOOLS-GENERIC] {tool_name} result: success={tool_result.get('success', False)}")
+
+        else:
+            final_content = message.content or ""
+
+            if on_chunk and final_content:
+                on_chunk(final_content)
+
+            break
+
+    return {
+        "content": final_content,
+        "thinking": final_thinking,
+        "usage": total_usage,
+        "model": config.provider_config.model,
+        "tool_calls": all_tool_calls,
+    }
+
+
+def call_llm_with_tools_sync(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str = "Produce the schedule now.",
+    on_tool_call: Optional[Callable[[str, str], None]] = None,
+) -> Dict[str, Any]:
+    """Synchronous wrapper for call_llm_with_tools"""
+    return asyncio.run(call_llm_with_tools(
+        prompt, config, user_message,
+        on_tool_call=on_tool_call
+    ))

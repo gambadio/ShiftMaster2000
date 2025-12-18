@@ -167,6 +167,10 @@ class LLMConfig(BaseModel):
     mcp_servers: List[MCPServerConfig] = Field(default_factory=list)
     enable_mcp: bool = False
 
+    # Experimental: MiniZinc tool for constraint solving
+    enable_minizinc_tool: bool = False  # Allow LLM to use MiniZinc for optimization
+    minizinc_timeout: int = 30  # Timeout in seconds for MiniZinc solver
+
 class ChatMessage(BaseModel):
     """Chat message in conversation history"""
     role: str  # "system", "user", "assistant"
