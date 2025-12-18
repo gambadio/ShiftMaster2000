@@ -137,17 +137,28 @@ def build_system_prompt(
         start = datetime.fromisoformat(start_date)
         end = datetime.fromisoformat(end_date)
         num_days = (end - start).days + 1
-        weekdays = []
+
+        # Build calendar reference with European date format (DD.MM.YYYY - Day)
+        calendar_entries = []
         current = start
         while current <= end:
-            weekdays.append(current.strftime("%A"))
+            # Format: DD.MM.YYYY - Day abbreviation (Mo, Di, Mi, Do, Fr, Sa, So for German)
+            day_abbrev = current.strftime("%a")  # Mon, Tue, etc.
+            # Map to German abbreviations for consistency with Teams
+            german_days = {"Mon": "Mo", "Tue": "Di", "Wed": "Mi", "Thu": "Do", "Fri": "Fr", "Sat": "Sa", "Sun": "So"}
+            day_abbrev = german_days.get(day_abbrev, day_abbrev)
+            calendar_entries.append(f"{current.strftime('%d.%m.%Y')} - {day_abbrev}")
             current += timedelta(days=1)
+
+        calendar_reference = " / ".join(calendar_entries)
 
         planning_context = f"""
 ### Planning Period
 Generate schedule for: **{start_date}** to **{end_date}** (inclusive)
 Total days: {num_days}
-Weekdays included: {', '.join(set(weekdays))}
+
+**Calendar Reference:**
+{calendar_reference}
 """
 
     sys = SYSTEM_TEMPLATE.format(
