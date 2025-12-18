@@ -628,21 +628,45 @@ def _condense_shifts(shifts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def _condense_timeoffs(time_offs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Condense time-off entries by grouping same reason.
-    
-    Input: list of individual time-off entries  
+
+    Input: list of individual time-off entries
     Output: list of {r: reason, d: [dates] or d: "start:end"}
+
+    Handles multi-day time-off periods by expanding date ranges.
     """
     from collections import defaultdict
-    
+    from datetime import datetime, timedelta
+
     # Group by reason
     by_reason: Dict[str, List[str]] = defaultdict(list)
-    
+
     for off in time_offs:
         reason = off.get("reason") or off.get("type") or "Off"
-        date_str = off.get("start_date") or off.get("date") or ""
-        
-        if date_str:
-            by_reason[reason].append(date_str)
+        start_str = off.get("start_date") or off.get("date") or ""
+        end_str = off.get("end_date") or ""
+
+        if not start_str:
+            continue
+
+        # If no end_date or same as start, just add the single date
+        if not end_str or end_str == start_str:
+            by_reason[reason].append(start_str)
+        else:
+            # Expand the date range to include all days
+            try:
+                start_date = datetime.fromisoformat(start_str).date()
+                end_date = datetime.fromisoformat(end_str).date()
+
+                # Add all dates in the range (inclusive)
+                current = start_date
+                while current <= end_date:
+                    by_reason[reason].append(current.isoformat())
+                    current += timedelta(days=1)
+            except (ValueError, TypeError):
+                # If parsing fails, just add both dates
+                by_reason[reason].append(start_str)
+                if end_str:
+                    by_reason[reason].append(end_str)
     
     # Convert to condensed format
     result = []

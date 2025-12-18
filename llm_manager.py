@@ -442,43 +442,73 @@ async def call_llm_with_tools(
     Returns:
         Dict with 'content', 'thinking', 'usage', 'model', and 'tool_calls' keys
     """
-    # Check if MiniZinc tool is enabled
-    if not config.enable_minizinc_tool:
+    # Check if any tools are enabled
+    if not config.enable_minizinc_tool and not config.enable_query_tool:
         # No tools enabled, use regular call
         return await call_llm_with_reasoning(prompt, config, user_message, on_chunk, on_thinking)
 
-    # Import MiniZinc tool
-    try:
-        from minizinc_tool import MINIZINC_TOOL_SCHEMA, process_tool_call
-    except ImportError:
-        print("[WARN] minizinc_tool module not available, falling back to regular call")
+    # Build tools list dynamically
+    tools = []
+    tool_handlers = {}
+
+    # Add MiniZinc tool if enabled
+    if config.enable_minizinc_tool:
+        try:
+            from minizinc_tool import MINIZINC_TOOL_SCHEMA, process_tool_call as minizinc_handler
+            tools.append(MINIZINC_TOOL_SCHEMA)
+            tool_handlers["run_minizinc"] = minizinc_handler
+            print("[TOOLS] MiniZinc tool enabled")
+        except ImportError:
+            print("[WARN] minizinc_tool module not available")
+
+    # Add Query tool if enabled
+    if config.enable_query_tool:
+        try:
+            from query_tool import QUERY_TOOL_SCHEMA, process_tool_call as query_handler
+            tools.append(QUERY_TOOL_SCHEMA)
+            tool_handlers["query_schedule_data"] = query_handler
+            print("[TOOLS] Query tool enabled")
+        except ImportError:
+            print("[WARN] query_tool module not available")
+
+    # If no tools could be loaded, fall back to regular call
+    if not tools:
+        print("[WARN] No tools available, falling back to regular call")
         return await call_llm_with_reasoning(prompt, config, user_message, on_chunk, on_thinking)
 
-    # Get tools list
-    tools = [MINIZINC_TOOL_SCHEMA]
+    # Create unified tool processor
+    def process_any_tool_call(tool_call: Dict[str, Any]) -> Dict[str, Any]:
+        function = tool_call.get("function", {})
+        function_name = function.get("name", "")
+        handler = tool_handlers.get(function_name)
+        if handler:
+            return handler(tool_call)
+        return {"success": False, "error": f"Unknown tool: {function_name}"}
+
+    print(f"[TOOLS] {len(tools)} tool(s) available: {list(tool_handlers.keys())}")
 
     # Route to appropriate provider with tools
     provider = config.provider_config.provider
 
     if provider == ProviderType.OPENAI:
         return await _call_with_tools_openai(
-            prompt, config, user_message, tools,
+            prompt, config, user_message, tools, process_any_tool_call,
             on_chunk, on_thinking, on_tool_call, max_tool_iterations
         )
     elif provider == ProviderType.AZURE:
         return await _call_with_tools_azure(
-            prompt, config, user_message, tools,
+            prompt, config, user_message, tools, process_any_tool_call,
             on_chunk, on_thinking, on_tool_call, max_tool_iterations
         )
     elif provider == ProviderType.OPENROUTER:
         return await _call_with_tools_openrouter(
-            prompt, config, user_message, tools,
+            prompt, config, user_message, tools, process_any_tool_call,
             on_chunk, on_thinking, on_tool_call, max_tool_iterations
         )
     else:
         # Generic/Custom - try OpenAI-style tool calling
         return await _call_with_tools_generic(
-            prompt, config, user_message, tools,
+            prompt, config, user_message, tools, process_any_tool_call,
             on_chunk, on_thinking, on_tool_call, max_tool_iterations
         )
 
@@ -488,6 +518,7 @@ async def _call_with_tools_openai(
     config: LLMConfig,
     user_message: str,
     tools: List[Dict[str, Any]],
+    tool_processor: Callable[[Dict[str, Any]], Dict[str, Any]],
     on_chunk: Optional[Callable[[str], None]],
     on_thinking: Optional[Callable[[str], None]],
     on_tool_call: Optional[Callable[[str, str], None]],
@@ -498,8 +529,6 @@ async def _call_with_tools_openai(
         from openai import OpenAI
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
-
-    from minizinc_tool import process_tool_call
 
     client = OpenAI(api_key=config.provider_config.api_key)
 
@@ -579,7 +608,7 @@ async def _call_with_tools_openai(
                     on_tool_call(tool_name, tool_args)
 
                 # Execute the tool
-                tool_result = process_tool_call({
+                tool_result = tool_processor({
                     "id": tool_call.id,
                     "type": "function",
                     "function": {
@@ -632,6 +661,7 @@ async def _call_with_tools_azure(
     config: LLMConfig,
     user_message: str,
     tools: List[Dict[str, Any]],
+    tool_processor: Callable[[Dict[str, Any]], Dict[str, Any]],
     on_chunk: Optional[Callable[[str], None]],
     on_thinking: Optional[Callable[[str], None]],
     on_tool_call: Optional[Callable[[str, str], None]],
@@ -642,8 +672,6 @@ async def _call_with_tools_azure(
         from openai import AzureOpenAI
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
-
-    from minizinc_tool import process_tool_call
 
     client = AzureOpenAI(
         api_key=config.provider_config.api_key,
@@ -729,7 +757,7 @@ async def _call_with_tools_azure(
                 if on_tool_call:
                     on_tool_call(tool_name, tool_args)
 
-                tool_result = process_tool_call({
+                tool_result = tool_processor({
                     "id": tool_call.id,
                     "type": "function",
                     "function": {
@@ -777,6 +805,7 @@ async def _call_with_tools_openrouter(
     config: LLMConfig,
     user_message: str,
     tools: List[Dict[str, Any]],
+    tool_processor: Callable[[Dict[str, Any]], Dict[str, Any]],
     on_chunk: Optional[Callable[[str], None]],
     on_thinking: Optional[Callable[[str], None]],
     on_tool_call: Optional[Callable[[str, str], None]],
@@ -787,8 +816,6 @@ async def _call_with_tools_openrouter(
         from openai import OpenAI
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
-
-    from minizinc_tool import process_tool_call
 
     # Build headers
     headers = {}
@@ -880,7 +907,7 @@ async def _call_with_tools_openrouter(
                 if on_tool_call:
                     on_tool_call(tool_name, tool_args)
 
-                tool_result = process_tool_call({
+                tool_result = tool_processor({
                     "id": tool_call.id,
                     "type": "function",
                     "function": {
@@ -930,6 +957,7 @@ async def _call_with_tools_generic(
     config: LLMConfig,
     user_message: str,
     tools: List[Dict[str, Any]],
+    tool_processor: Callable[[Dict[str, Any]], Dict[str, Any]],
     on_chunk: Optional[Callable[[str], None]],
     on_thinking: Optional[Callable[[str], None]],
     on_tool_call: Optional[Callable[[str, str], None]],
@@ -940,8 +968,6 @@ async def _call_with_tools_generic(
         from openai import OpenAI
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
-
-    from minizinc_tool import process_tool_call
 
     client = OpenAI(
         base_url=config.provider_config.base_url,
@@ -1015,7 +1041,7 @@ async def _call_with_tools_generic(
                 if on_tool_call:
                     on_tool_call(tool_name, tool_args)
 
-                tool_result = process_tool_call({
+                tool_result = tool_processor({
                     "id": tool_call.id,
                     "type": "function",
                     "function": {

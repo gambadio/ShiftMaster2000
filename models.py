@@ -171,6 +171,9 @@ class LLMConfig(BaseModel):
     enable_minizinc_tool: bool = False  # Allow LLM to use MiniZinc for optimization
     minizinc_timeout: int = 30  # Timeout in seconds for MiniZinc solver
 
+    # Experimental: Query tool for data access during generation
+    enable_query_tool: bool = False  # Allow LLM to query employee/schedule data
+
 class ChatMessage(BaseModel):
     """Chat message in conversation history"""
     role: str  # "system", "user", "assistant"

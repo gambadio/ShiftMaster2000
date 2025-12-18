@@ -431,6 +431,56 @@ with st.sidebar:
         days = (project.planning_period.end_date - project.planning_period.start_date).days + 1
         st.metric(get_text("planning_days", lang), days)
 
+    # Clear Data section
+    st.write("---")
+    st.write("### 🧹 Clear Data")
+    st.caption("Keep employees & shifts, clear everything else")
+
+    if st.button("🗑️ Clear All Data", use_container_width=True, help="Clears uploaded schedules, generated data, LLM outputs, rules, and conversation history. Keeps employees and shift templates."):
+        # Preserve employees and shifts
+        preserved_employees = project.employees.copy()
+        preserved_shifts = project.shifts.copy()
+        preserved_name = project.name
+        preserved_version = project.version
+
+        # Reset project to defaults but keep employees/shifts
+        from models import RuleSet, LLMConfig
+        project.employees = preserved_employees
+        project.shifts = preserved_shifts
+        project.name = preserved_name
+        project.version = preserved_version
+        project.global_rules = RuleSet()  # Reset to default rules
+        project.custom_data = {}
+        project.llm_config = LLMConfig()  # Reset LLM config
+        project.planning_period = None
+        project.schedule_state = None
+
+        # Clear schedule manager state
+        st.session_state.schedule_manager = ScheduleManager(project)
+
+        # Clear all data-related session state
+        st.session_state.schedule_payload = None
+        st.session_state.generated_schedule = None
+        st.session_state.generated_entries = []
+        st.session_state.llm_conversation = []
+        st.session_state.last_generated_payload = None
+        st.session_state.last_generation_notes = None
+        st.session_state.last_parse_errors = []
+        st.session_state.chat_session = ChatSession()
+        st.session_state.streaming_output = ""
+        st.session_state.thinking_output = ""
+
+        # Clear uploaded file reference (but keep project file reference)
+        if "uploaded_teams_file" in st.session_state:
+            del st.session_state.uploaded_teams_file
+        if "uploaded_shifts_file" in st.session_state:
+            del st.session_state.uploaded_shifts_file
+        if "uploaded_timeoff_file" in st.session_state:
+            del st.session_state.uploaded_timeoff_file
+
+        st.success("✅ Data cleared! Employees and shifts preserved.")
+        st.rerun()
+
     # Help section
     st.write("---")
     with st.expander(get_text("help_button", lang)):
@@ -1900,6 +1950,27 @@ with tabs[8]:
                     project.llm_config.minizinc_timeout = minizinc_timeout
                     auto_save_if_enabled()
 
+            st.markdown("---")
+            st.markdown("**Data Query Tool**")
+            st.caption(
+                "When enabled, the LLM can query employee data and schedule history "
+                "during generation. It can ask for specific employee details, past shifts, "
+                "or time-off periods to make informed scheduling decisions."
+            )
+
+            use_query_tool = st.checkbox(
+                "Enable data query tool",
+                value=project.llm_config.enable_query_tool,
+                help="Allow the LLM to query employee and schedule data during generation"
+            )
+
+            if use_query_tool != project.llm_config.enable_query_tool:
+                project.llm_config.enable_query_tool = use_query_tool
+                auto_save_if_enabled()
+
+            if use_query_tool:
+                st.info("The LLM will be able to query: employee info, past schedules, employees by role, time-off periods")
+
         output_container = st.container()
         generated_now = False
 
@@ -1928,6 +1999,21 @@ with tabs[8]:
                 mcp_tools_section = format_mcp_tools_for_prompt(project.llm_config.mcp_servers)
                 prompt += "\n\n" + mcp_tools_section
 
+            # Set up query tool context if enabled
+            if project.llm_config.enable_query_tool:
+                try:
+                    from query_tool import set_query_context
+                    # Get all schedule entries for querying
+                    all_entries = st.session_state.schedule_manager.get_all_entries()
+                    set_query_context(
+                        employees=project.employees,
+                        schedule_entries=all_entries,
+                        shifts=project.shifts
+                    )
+                    print(f"[QUERY] Context set: {len(project.employees)} employees, {len(all_entries)} entries")
+                except ImportError:
+                    print("[WARN] query_tool module not available")
+
             try:
                 # Use async with streaming if enabled
                 if project.llm_config.enable_streaming:
@@ -1939,19 +2025,29 @@ with tabs[8]:
                     thinking_expander = st.expander("🧠 Model Thinking (Live Stream)", expanded=True)
                     content_expander = st.expander("📝 Generated Content (Live Stream)", expanded=True)
 
-                    # Tool calls expander (only shown if MiniZinc is enabled)
+                    # Tool calls expander (shown if any tool is enabled)
                     tool_calls_expander = None
                     tool_calls_area = None
                     tool_calls_buffer = []
-                    if project.llm_config.enable_minizinc_tool:
-                        tool_calls_expander = st.expander("🔧 Tool Calls (MiniZinc)", expanded=True)
+                    if project.llm_config.enable_minizinc_tool or project.llm_config.enable_query_tool:
+                        tools_label = []
+                        if project.llm_config.enable_minizinc_tool:
+                            tools_label.append("MiniZinc")
+                        if project.llm_config.enable_query_tool:
+                            tools_label.append("Query")
+                        tool_calls_expander = st.expander(f"🔧 Tool Calls ({', '.join(tools_label)})", expanded=True)
                         tool_calls_area = tool_calls_expander.empty()
 
                     thinking_area = thinking_expander.empty()
                     content_area = content_expander.empty()
 
-                    if project.llm_config.enable_minizinc_tool:
-                        status_text.info("🤔 Model is thinking and generating (with MiniZinc tool access)...")
+                    if project.llm_config.enable_minizinc_tool or project.llm_config.enable_query_tool:
+                        tools_msg = []
+                        if project.llm_config.enable_minizinc_tool:
+                            tools_msg.append("MiniZinc")
+                        if project.llm_config.enable_query_tool:
+                            tools_msg.append("Query")
+                        status_text.info(f"🤔 Model is thinking and generating (with {', '.join(tools_msg)} tool access)...")
                     else:
                         status_text.info("🤔 Model is thinking and generating...")
 
@@ -2017,8 +2113,8 @@ with tabs[8]:
                             "Output the FULL JSON with every single shift assignment. This is a one-shot generation - there is no follow-up conversation."
                         )
 
-                        if project.llm_config.enable_minizinc_tool:
-                            # Use tool calling with MiniZinc
+                        if project.llm_config.enable_minizinc_tool or project.llm_config.enable_query_tool:
+                            # Use tool calling with enabled tools
                             result = await call_llm_with_tools(
                                 prompt=prompt,
                                 config=project.llm_config,
@@ -2069,8 +2165,15 @@ with tabs[8]:
                         "Output the FULL JSON with every single shift assignment. This is a one-shot generation - there is no follow-up conversation."
                     )
 
-                    if project.llm_config.enable_minizinc_tool:
-                        with st.spinner("🤔 Generating schedule (with MiniZinc tool access)..."):
+                    if project.llm_config.enable_minizinc_tool or project.llm_config.enable_query_tool:
+                        # Build tools message
+                        tools_names = []
+                        if project.llm_config.enable_minizinc_tool:
+                            tools_names.append("MiniZinc")
+                        if project.llm_config.enable_query_tool:
+                            tools_names.append("Query")
+
+                        with st.spinner(f"🤔 Generating schedule (with {', '.join(tools_names)} tool access)..."):
                             result = call_llm_with_tools_sync(
                                 prompt,
                                 project.llm_config,
@@ -2078,7 +2181,7 @@ with tabs[8]:
                             )
                             # Display tool calls if any
                             if result.get("tool_calls"):
-                                with st.expander("🔧 Tool Calls (MiniZinc)", expanded=False):
+                                with st.expander(f"🔧 Tool Calls ({', '.join(tools_names)})", expanded=False):
                                     for tc in result["tool_calls"]:
                                         st.markdown(f"**{tc['name']}**")
                                         st.code(tc['arguments'][:1000], language="json")
