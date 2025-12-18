@@ -6,7 +6,10 @@
       "Bash(python3:*)",
       "Bash(ls:*)",
       "Bash(cat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(curl:*)",
+      "Bash(timeout 5 python:*)"
     ],
     "deny": [],
     "ask": []

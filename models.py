@@ -170,6 +170,7 @@ class LLMConfig(BaseModel):
     # Experimental: MiniZinc tool for constraint solving
     enable_minizinc_tool: bool = False  # Allow LLM to use MiniZinc for optimization
     minizinc_timeout: int = 30  # Timeout in seconds for MiniZinc solver
+    minizinc_solver: Optional[str] = None  # Preferred solver (e.g., "gecode", "highs", "cbc")
 
     # Experimental: Query tool for data access during generation
     enable_query_tool: bool = False  # Allow LLM to query employee/schedule data

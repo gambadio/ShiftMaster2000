@@ -454,10 +454,12 @@ async def call_llm_with_tools(
     # Add MiniZinc tool if enabled
     if config.enable_minizinc_tool:
         try:
-            from minizinc_tool import MINIZINC_TOOL_SCHEMA, process_tool_call as minizinc_handler
+            from minizinc_tool import MINIZINC_TOOL_SCHEMA, process_tool_call as minizinc_process
             tools.append(MINIZINC_TOOL_SCHEMA)
-            tool_handlers["run_minizinc"] = minizinc_handler
-            print("[TOOLS] MiniZinc tool enabled")
+            # Wrap handler to pass configured solver
+            solver_name = config.minizinc_solver
+            tool_handlers["run_minizinc"] = lambda tc, s=solver_name: minizinc_process(tc, s)
+            print(f"[TOOLS] MiniZinc tool enabled with solver: {solver_name or 'auto'}")
         except ImportError:
             print("[WARN] minizinc_tool module not available")
 

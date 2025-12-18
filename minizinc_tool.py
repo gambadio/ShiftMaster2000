@@ -72,27 +72,83 @@ output [show(schedule)];
 }
 
 
-def check_minizinc_available() -> tuple:
+def get_available_solvers() -> List[str]:
     """
-    Check if MiniZinc is available on the system.
+    Get list of available MiniZinc solvers on the system.
 
     Returns:
-        Tuple of (is_available: bool, message: str)
+        List of solver names/tags that can be used
     """
     try:
         import minizinc
-        solver = minizinc.Solver.lookup("gecode")
-        return True, f"MiniZinc available with solver: {solver.name}"
+        # Get all available solvers via the driver
+        driver = minizinc.default_driver
+        if driver is None:
+            return []
+        return sorted(driver.available_solvers())
+    except Exception:
+        return []
+
+
+# Preferred solvers in order of preference for constraint satisfaction
+PREFERRED_SOLVERS = ["gecode", "chuffed", "highs", "cbc", "coinbc", "coin-bc", "scip"]
+
+
+def check_minizinc_available(preferred_solver: Optional[str] = None) -> tuple:
+    """
+    Check if MiniZinc is available on the system.
+
+    Args:
+        preferred_solver: Optional specific solver to check for
+
+    Returns:
+        Tuple of (is_available: bool, message: str, available_solvers: List[str])
+    """
+    try:
+        import minizinc
+        available_solvers = get_available_solvers()
+
+        if not available_solvers:
+            return False, "No MiniZinc solvers found. Please install MiniZinc: https://www.minizinc.org/software.html", []
+
+        # If a specific solver is requested, check for it
+        if preferred_solver:
+            try:
+                solver = minizinc.Solver.lookup(preferred_solver)
+                return True, f"MiniZinc available with solver: {solver.name}", available_solvers
+            except Exception:
+                return False, f"Solver '{preferred_solver}' not found. Available: {available_solvers}", available_solvers
+
+        # Otherwise, find the best available solver from preferred list
+        for solver_name in PREFERRED_SOLVERS:
+            if solver_name in available_solvers:
+                try:
+                    solver = minizinc.Solver.lookup(solver_name)
+                    return True, f"MiniZinc available with solver: {solver.name}", available_solvers
+                except Exception:
+                    continue
+
+        # Fall back to first available
+        if available_solvers:
+            try:
+                solver = minizinc.Solver.lookup(available_solvers[0])
+                return True, f"MiniZinc available with solver: {solver.name}", available_solvers
+            except Exception:
+                pass
+
+        return False, f"No compatible solver found. Available: {available_solvers}", available_solvers
+
     except ImportError:
-        return False, "MiniZinc Python package not installed. Install with: pip install minizinc"
+        return False, "MiniZinc Python package not installed. Install with: pip install minizinc", []
     except Exception as e:
-        return False, f"MiniZinc not properly configured: {e}. Please install MiniZinc: https://www.minizinc.org/software.html"
+        return False, f"MiniZinc not properly configured: {e}. Please install MiniZinc: https://www.minizinc.org/software.html", []
 
 
 def run_minizinc(
     model: str,
     data: Optional[Dict[str, Any]] = None,
-    timeout: int = 30
+    timeout: int = 30,
+    solver_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Execute a MiniZinc model and return the solution.
@@ -101,6 +157,7 @@ def run_minizinc(
         model: Complete MiniZinc model code
         data: Optional data parameters for the model
         timeout: Timeout in seconds
+        solver_name: Optional specific solver to use (e.g., "gecode", "highs", "cbc")
 
     Returns:
         Dictionary with:
@@ -129,14 +186,32 @@ def run_minizinc(
             # Load the model
             mzn_model = minizinc.Model(model_file)
 
-            # Find a solver (prefer Gecode, fall back to others)
-            try:
-                solver = minizinc.Solver.lookup("gecode")
-            except:
+            # Find a solver
+            solver = None
+
+            # If specific solver requested, try it first
+            if solver_name:
                 try:
-                    solver = minizinc.Solver.lookup("chuffed")
-                except:
-                    solver = minizinc.Solver.lookup("coinbc")
+                    solver = minizinc.Solver.lookup(solver_name)
+                except Exception:
+                    pass  # Fall through to preferred solvers
+
+            # Try preferred solvers in order
+            if solver is None:
+                for preferred in PREFERRED_SOLVERS:
+                    try:
+                        solver = minizinc.Solver.lookup(preferred)
+                        break
+                    except Exception:
+                        continue
+
+            # Last resort: try to get any solver
+            if solver is None:
+                available = get_available_solvers()
+                if available:
+                    solver = minizinc.Solver.lookup(available[0])
+                else:
+                    raise Exception("No MiniZinc solvers available")
 
             # Create instance
             instance = minizinc.Instance(solver, mzn_model)
@@ -229,7 +304,7 @@ def run_minizinc(
         }
 
 
-def process_tool_call(tool_call: Dict[str, Any]) -> Dict[str, Any]:
+def process_tool_call(tool_call: Dict[str, Any], solver_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Process a tool call from the LLM and return the result.
 
@@ -243,6 +318,7 @@ def process_tool_call(tool_call: Dict[str, Any]) -> Dict[str, Any]:
                     "arguments": "{\"model\": \"...\", \"data\": {...}}"
                 }
             }
+        solver_name: Optional specific solver to use (e.g., "gecode", "highs", "cbc")
 
     Returns:
         Tool result to send back to the LLM
@@ -278,7 +354,7 @@ def process_tool_call(tool_call: Dict[str, Any]) -> Dict[str, Any]:
                 "error": "No model provided"
             }
 
-        return run_minizinc(model, data, timeout)
+        return run_minizinc(model, data, timeout, solver_name)
 
     except Exception as e:
         return {

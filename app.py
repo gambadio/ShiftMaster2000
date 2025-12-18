@@ -1928,13 +1928,45 @@ with tabs[8]:
                 auto_save_if_enabled()
 
             if use_minizinc:
-                # Check if MiniZinc is available
+                # Check if MiniZinc is available and get solver list
                 try:
-                    from minizinc_tool import check_minizinc_available
-                    available, msg = check_minizinc_available()
-                    if available:
-                        st.success(f"✅ {msg}")
+                    from minizinc_tool import check_minizinc_available, get_available_solvers
+                    available_solvers = get_available_solvers()
+
+                    # Show solver selector if solvers are available
+                    if available_solvers:
+                        # Determine current selection
+                        current_solver = project.llm_config.minizinc_solver
+                        if current_solver and current_solver in available_solvers:
+                            default_index = available_solvers.index(current_solver)
+                        else:
+                            # Find first preferred solver that's available
+                            from minizinc_tool import PREFERRED_SOLVERS
+                            default_index = 0
+                            for pref in PREFERRED_SOLVERS:
+                                if pref in available_solvers:
+                                    default_index = available_solvers.index(pref)
+                                    break
+
+                        selected_solver = st.selectbox(
+                            "MiniZinc Solver",
+                            options=available_solvers,
+                            index=default_index,
+                            help="Select the constraint solver to use. 'highs' is recommended if 'gecode' is not available."
+                        )
+
+                        if selected_solver != project.llm_config.minizinc_solver:
+                            project.llm_config.minizinc_solver = selected_solver
+                            auto_save_if_enabled()
+
+                        # Check if selected solver works
+                        available, msg, _ = check_minizinc_available(selected_solver)
+                        if available:
+                            st.success(f"✅ {msg}")
+                        else:
+                            st.warning(f"⚠️ {msg}")
                     else:
+                        available, msg, _ = check_minizinc_available()
                         st.warning(f"⚠️ {msg}")
                 except ImportError:
                     st.warning("⚠️ minizinc_tool module not available")
