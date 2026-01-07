@@ -819,6 +819,43 @@ async def _call_with_tools_openrouter(
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
 
+    # Debug: Print API key info (masked for security)
+    api_key = config.provider_config.api_key
+    base_url = config.provider_config.get_base_url()
+    model = config.provider_config.model
+    if api_key:
+        masked_key = f"{api_key[:10]}...{api_key[-4:]}" if len(api_key) > 14 else "***"
+        print(f"[DEBUG-OPENROUTER] API Key: {masked_key} (len={len(api_key)})")
+    else:
+        print(f"[DEBUG-OPENROUTER] API Key: NONE/EMPTY")
+    print(f"[DEBUG-OPENROUTER] Base URL: {base_url}")
+    print(f"[DEBUG-OPENROUTER] Model: {model}")
+
+    # Quick test: Try a simple API call first to verify auth works
+    import requests
+    print(f"[DEBUG-OPENROUTER] Testing auth with direct request...")
+    test_resp = requests.get(
+        "https://openrouter.ai/api/v1/auth/key",
+        headers={"Authorization": f"Bearer {api_key}"}
+    )
+    print(f"[DEBUG-OPENROUTER] Auth test response: {test_resp.status_code} - {test_resp.text[:200] if test_resp.text else 'empty'}")
+
+    # Test simple chat completion WITHOUT tools
+    print(f"[DEBUG-OPENROUTER] Testing simple chat completion (no tools)...")
+    simple_test = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": "Say hello"}],
+            "max_tokens": 10
+        }
+    )
+    print(f"[DEBUG-OPENROUTER] Simple chat test: {simple_test.status_code} - {simple_test.text[:300] if simple_test.text else 'empty'}")
+
     # Build headers
     headers = {}
     if config.provider_config.http_referer:
@@ -827,8 +864,8 @@ async def _call_with_tools_openrouter(
         headers["X-Title"] = config.provider_config.x_title
 
     client = OpenAI(
-        base_url=config.provider_config.get_base_url(),
-        api_key=config.provider_config.api_key,
+        base_url=base_url,
+        api_key=api_key,
         default_headers=headers if headers else None,
     )
 

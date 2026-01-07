@@ -9,16 +9,24 @@ Based on research documented in knowledge.md
 
 from __future__ import annotations
 import time
-from typing import Optional, Dict, Any, Generator, List
+import requests
+from typing import Optional, Dict, Any, Generator, List, TYPE_CHECKING
 from datetime import datetime
 
+if TYPE_CHECKING:
+    from openai import OpenAI, AzureOpenAI, APIError, RateLimitError, APIConnectionError
+
 try:
-    from openai import OpenAI, AzureOpenAI
-    from openai import APIError, RateLimitError, APIConnectionError
+    from openai import OpenAI, AzureOpenAI, APIError, RateLimitError, APIConnectionError
 except ImportError:
-    raise ImportError(
-        "OpenAI SDK is required. Install with: pip install openai"
-    )
+    OpenAI = None
+    AzureOpenAI = None
+
+    class _OpenAIImportError(Exception):
+        """Raised when OpenAI SDK is missing."""
+        pass
+
+    APIError = RateLimitError = APIConnectionError = _OpenAIImportError
 
 from models import (
     LLMConfig,
@@ -55,6 +63,9 @@ class LLMClient:
 
     def _create_client(self):
         """Create the appropriate client based on provider type"""
+        if OpenAI is None or AzureOpenAI is None:
+            raise ImportError("OpenAI SDK is required. Install with: pip install openai")
+
         provider = self.provider_config.provider
         api_key = self.provider_config.api_key
 
@@ -102,6 +113,12 @@ class LLMClient:
             List of model IDs/names
         """
         try:
+            # OpenRouter requires direct HTTP request for model listing
+            # The OpenAI SDK's models.list() may not work correctly with OpenRouter
+            if self.provider_config.provider == ProviderType.OPENROUTER:
+                return self._fetch_openrouter_models()
+
+            # Standard OpenAI SDK models.list() for other providers
             models = self.client.models.list()
             model_ids = [model.id for model in models.data]
 
@@ -113,6 +130,61 @@ class LLMClient:
         except Exception as e:
             print(f"Error fetching models: {e}")
             return []
+
+    def _fetch_openrouter_models(self) -> List[str]:
+        """
+        Fetch models from OpenRouter using direct HTTP request.
+
+        OpenRouter's /api/v1/models endpoint returns model data in a specific format
+        that requires direct API access rather than the OpenAI SDK's models.list().
+
+        Returns:
+            List of model IDs in provider/model format (e.g., 'openai/gpt-4o')
+        """
+        url = "https://openrouter.ai/api/v1/models"
+        headers = {
+            "Authorization": f"Bearer {self.provider_config.api_key}"
+        }
+
+        # Add optional headers if configured
+        if self.provider_config.http_referer:
+            headers["HTTP-Referer"] = self.provider_config.http_referer
+        if self.provider_config.x_title:
+            headers["X-Title"] = self.provider_config.x_title
+
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        data = response.json()
+
+        # Extract model IDs from the response
+        # OpenRouter returns: {"data": [{"id": "openai/gpt-4o", ...}, ...]}
+        model_ids = []
+        if "data" in data:
+            for model in data["data"]:
+                if "id" in model:
+                    model_ids.append(model["id"])
+
+        # Sort models for better UX (popular providers first)
+        def model_sort_key(model_id: str) -> tuple:
+            # Priority providers (lower number = higher priority)
+            priority_providers = {
+                "openai": 0,
+                "anthropic": 1,
+                "google": 2,
+                "meta-llama": 3,
+                "mistralai": 4,
+            }
+            provider = model_id.split("/")[0] if "/" in model_id else model_id
+            priority = priority_providers.get(provider, 99)
+            return (priority, model_id)
+
+        model_ids.sort(key=model_sort_key)
+
+        # Cache the models
+        self.provider_config.available_models = model_ids
+
+        return model_ids
 
     def _get_model_max_tokens(self, model_name: str) -> int:
         """
