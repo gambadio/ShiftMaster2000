@@ -1,7 +1,7 @@
 """
 PDF Export for Calendar Preview
 
-Exports the schedule calendar view to PDF using WeasyPrint.
+Exports the schedule calendar view to PDF using xhtml2pdf (pure Python, no GTK required).
 """
 
 from __future__ import annotations
@@ -31,11 +31,11 @@ def export_calendar_to_pdf(
         PDF file as bytes
     """
     try:
-        from weasyprint import HTML, CSS
+        from xhtml2pdf import pisa
     except ImportError:
         raise ImportError(
-            "WeasyPrint is required for PDF export. "
-            "Install it with: pip install weasyprint"
+            "xhtml2pdf is required for PDF export. "
+            "Install it with: pip install xhtml2pdf"
         )
 
     from preview import build_calendar_html
@@ -80,10 +80,15 @@ def export_calendar_to_pdf(
     # Combine all pages
     full_html = _wrap_for_pdf(pages_html, title)
 
-    # Convert to PDF
-    pdf_bytes = HTML(string=full_html).write_pdf()
-
-    return pdf_bytes
+    # Convert to PDF using xhtml2pdf
+    pdf_buffer = BytesIO()
+    pisa_status = pisa.CreatePDF(full_html, dest=pdf_buffer)
+    
+    if pisa_status.err:
+        raise RuntimeError(f"PDF generation failed with {pisa_status.err} errors")
+    
+    pdf_buffer.seek(0)
+    return pdf_buffer.read()
 
 
 def _wrap_for_pdf(pages: List[str], title: str) -> str:
@@ -102,11 +107,12 @@ def _wrap_for_pdf(pages: List[str], title: str) -> str:
             }}
 
             body {{
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                font-family: Helvetica, Arial, sans-serif;
                 margin: 0;
                 padding: 0;
                 background: white;
                 color: black;
+                font-size: 10px;
             }}
 
             .pdf-page {{
@@ -126,39 +132,49 @@ def _wrap_for_pdf(pages: List[str], title: str) -> str:
 
             .page-header h2 {{
                 margin: 0 0 5px 0;
-                font-size: 18px;
+                font-size: 16px;
                 color: #333;
             }}
 
             .page-header p {{
                 margin: 0;
-                font-size: 14px;
+                font-size: 12px;
                 color: #666;
             }}
 
             /* Override table styles for PDF */
-            .teams-schedule {{
+            table {{
                 width: 100%;
-                font-size: 10px;
+                border-collapse: collapse;
+                font-size: 9px;
             }}
 
-            .teams-schedule th,
-            .teams-schedule td {{
+            th, td {{
                 padding: 4px 6px;
+                border: 1px solid #ddd;
+                text-align: left;
+                vertical-align: top;
+            }}
+
+            th {{
+                background-color: #f5f5f5;
+                font-weight: bold;
             }}
 
             .shift-block {{
-                font-size: 9px;
-                padding: 3px 5px;
-                margin: 2px 0;
+                font-size: 8px;
+                padding: 2px 4px;
+                margin: 1px 0;
+                border-radius: 3px;
             }}
 
             .employee-name {{
-                font-size: 11px;
+                font-size: 10px;
+                font-weight: bold;
             }}
 
             .employee-hours {{
-                font-size: 9px;
+                font-size: 8px;
             }}
 
             .day-cell {{
