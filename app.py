@@ -1296,7 +1296,8 @@ with tabs[5]:
         project,
         schedule_payload=st.session_state.schedule_payload,
         today_iso=today_iso,
-        planning_period=planning_tuple
+        planning_period=planning_tuple,
+        enable_minizinc=project.llm_config.enable_minizinc_tool
     )
 
     # Display stats
@@ -1813,7 +1814,8 @@ with tabs[7]:
                         project,
                         schedule_payload=st.session_state.schedule_payload,
                         today_iso=today_iso,
-                        planning_period=planning_tuple
+                        planning_period=planning_tuple,
+                        enable_minizinc=project.llm_config.enable_minizinc_tool
                     )
 
                     # Add MCP tools if configured
@@ -1897,7 +1899,9 @@ with tabs[8]:
                 with st.expander("🧠 Reasoning / Thinking", expanded=False):
                     st.text(result["thinking"])
 
-            st.code(result.get("content", ""), language="json")
+            # Wrap the JSON output in a scrollable container with fixed height
+            with st.container(height=400):
+                st.code(result.get("content", ""), language="json")
 
             if parse_errors:
                 st.warning("⚠️ Some entries could not be parsed. See details below.")
@@ -2024,7 +2028,8 @@ with tabs[8]:
                 project,
                 schedule_payload=st.session_state.schedule_payload,
                 today_iso=today_iso,
-                planning_period=planning_tuple
+                planning_period=planning_tuple,
+                enable_minizinc=project.llm_config.enable_minizinc_tool
             )
 
             if project.llm_config.mcp_servers:

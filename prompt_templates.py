@@ -27,6 +27,48 @@ Use these color codes when formatting output. Each shift should be assigned an a
 **Note:** Color 7 is not used. When assigning shifts, include the color_code (1-13) in your output.
 """
 
+MINIZINC_TOOL_INSTRUCTIONS = """
+## MiniZinc Constraint Solver Available
+
+You have access to a **MiniZinc constraint solver** via the `run_minizinc` tool. Use it to:
+
+1. **Optimize shift fairness** - Distribute late shifts, weekend work, and unpopular shifts evenly
+2. **Ensure coverage constraints** - Guarantee minimum staffing per shift/day
+3. **Handle complex conflicts** - When multiple constraints interact (availability, skills, rotations)
+4. **Find feasible solutions** - When manual assignment seems impossible due to constraints
+
+### When to Use MiniZinc:
+- Complex scheduling with many interacting constraints
+- Fairness optimization (equal distribution of shifts)
+- When you're unsure if constraints can be satisfied
+- To verify your manual assignments are optimal
+
+### How to Use:
+Call `run_minizinc` with a MiniZinc model. Example structure:
+
+```minizinc
+% Parameters
+int: num_employees = 5;
+int: num_days = 7;
+int: min_coverage = 2;
+
+% Decision variables
+array[1..num_employees, 1..num_days] of var 0..1: works;
+
+% Constraints
+constraint forall(d in 1..num_days)(sum(e in 1..num_employees)(works[e,d]) >= min_coverage);
+
+% Objective
+solve minimize sum(e in 1..num_employees)(abs(sum(d in 1..num_days)(works[e,d]) - 5));
+
+output [show(works)];
+```
+
+After getting the solution, convert it to the JSON schedule format.
+
+**IMPORTANT**: You SHOULD use MiniZinc for this scheduling task to ensure optimal and fair assignments.
+"""
+
 SYSTEM_TEMPLATE = """\
 {preamble}
 
@@ -123,7 +165,8 @@ def build_system_prompt(
     project: Project,
     schedule_payload: Optional[Dict[str, Any]] = None,
     today_iso: Optional[str] = None,
-    planning_period: Optional[tuple[str, str]] = None
+    planning_period: Optional[tuple[str, str]] = None,
+    enable_minizinc: bool = False
 ) -> str:
     from utils import condense_schedule_payload
     
@@ -168,6 +211,11 @@ Total days: {num_days}
         ofmt=project.global_rules.output_format_instructions.strip(),
         planning_period_context=planning_context
     )
+    
+    # Add MiniZinc instructions if enabled
+    if enable_minizinc:
+        sys += "\n" + MINIZINC_TOOL_INSTRUCTIONS
+    
     compiled = sys + "\n\nData:\n" + json_block(data)
 
     if schedule_payload:
