@@ -223,9 +223,9 @@ async def _call_azure(
         {"role": "user", "content": user_message}
     ]
 
-    # Check if this is a reasoning model (o1, o3, gpt-5/5.1 series)
+    # Check if this is a reasoning model (o1, o3, gpt-5 series)
     model_name = config.provider_config.model.lower()
-    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'gpt-5', 'gpt5'])
+    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'gpt-5'])
 
     # Build request parameters
     params: Dict[str, Any] = {
@@ -706,9 +706,9 @@ async def _call_with_tools_azure(
         timeout=LLM_TIMEOUT,
     )
 
-    # Check if this is a reasoning model (o1, o3, gpt-5/5.1 series)
+    # Check if this is a reasoning model
     model_name = config.provider_config.model.lower()
-    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'gpt-5', 'gpt5'])
+    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'gpt-5'])
 
     # Initialize conversation
     messages = [
