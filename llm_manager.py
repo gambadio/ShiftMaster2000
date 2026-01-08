@@ -14,8 +14,19 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Dict, Any, Optional, Callable, List
+import httpx
 
 from models import LLMConfig, ProviderType
+
+# Very long timeout for reasoning models that can think for extended periods
+# The read timeout is especially important - reasoning models may not send data for minutes
+# while "thinking", which would otherwise trigger a read timeout
+LLM_TIMEOUT = httpx.Timeout(
+    connect=60.0,    # 60 seconds to establish connection
+    read=1800.0,     # 30 minutes to wait for data (reasoning models need this!)
+    write=60.0,      # 60 seconds to send data
+    pool=60.0        # 60 seconds to get connection from pool
+)
 
 
 async def call_llm_with_reasoning(
@@ -65,7 +76,8 @@ async def _call_openai(
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
 
-    client = OpenAI(api_key=config.provider_config.api_key)
+    # Use very long timeout (30 min) for reasoning models that think for extended periods
+    client = OpenAI(api_key=config.provider_config.api_key, timeout=LLM_TIMEOUT)
 
     # Build messages
     messages = [
@@ -124,10 +136,12 @@ async def _call_openrouter(
     if config.provider_config.x_title:
         headers["X-Title"] = config.provider_config.x_title
 
+    # Use very long timeout (30 min) for reasoning models that think for extended periods
     client = OpenAI(
         base_url=config.provider_config.get_base_url(),
         api_key=config.provider_config.api_key,
         default_headers=headers if headers else None,
+        timeout=LLM_TIMEOUT,
     )
 
     # Build messages
@@ -195,10 +209,12 @@ async def _call_azure(
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
 
+    # Use very long timeout (30 min) for reasoning models that think for extended periods
     client = AzureOpenAI(
         api_key=config.provider_config.api_key,
         api_version=config.provider_config.api_version,
         azure_endpoint=config.provider_config.azure_endpoint,
+        timeout=LLM_TIMEOUT,
     )
 
     # Build messages
@@ -207,9 +223,9 @@ async def _call_azure(
         {"role": "user", "content": user_message}
     ]
 
-    # Check if this is a reasoning model (o1, o3, gpt-5 series)
+    # Check if this is a reasoning model (o1, o3, gpt-5/5.1 series)
     model_name = config.provider_config.model.lower()
-    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'gpt-5'])
+    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'gpt-5', 'gpt5'])
 
     # Build request parameters
     params: Dict[str, Any] = {
@@ -264,9 +280,11 @@ async def _call_generic(
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
 
+    # Use very long timeout (30 min) for reasoning models that think for extended periods
     client = OpenAI(
         base_url=config.provider_config.base_url,
         api_key=config.provider_config.api_key,
+        timeout=LLM_TIMEOUT,
     )
 
     # Build messages
@@ -532,7 +550,8 @@ async def _call_with_tools_openai(
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
 
-    client = OpenAI(api_key=config.provider_config.api_key)
+    # Use very long timeout (30 min) for reasoning models that think for extended periods
+    client = OpenAI(api_key=config.provider_config.api_key, timeout=LLM_TIMEOUT)
 
     # Initialize conversation
     messages = [
@@ -550,6 +569,10 @@ async def _call_with_tools_openai(
         iteration += 1
         print(f"[TOOLS] Iteration {iteration}/{max_iterations}")
 
+        # Force tool use on first iteration, then let LLM decide
+        # This ensures MiniZinc is actually called when enabled
+        tool_choice = "required" if iteration == 1 else "auto"
+
         # Build request parameters
         params: Dict[str, Any] = {
             "model": config.provider_config.model,
@@ -557,7 +580,7 @@ async def _call_with_tools_openai(
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
             "tools": tools,
-            "tool_choice": "auto",  # Let LLM decide when to use tools
+            "tool_choice": tool_choice,
         }
 
         # Add reasoning_effort for o1/o3 models
@@ -675,15 +698,17 @@ async def _call_with_tools_azure(
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
 
+    # Use very long timeout (30 min) for reasoning models that think for extended periods
     client = AzureOpenAI(
         api_key=config.provider_config.api_key,
         api_version=config.provider_config.api_version,
         azure_endpoint=config.provider_config.azure_endpoint,
+        timeout=LLM_TIMEOUT,
     )
 
-    # Check if this is a reasoning model
+    # Check if this is a reasoning model (o1, o3, gpt-5/5.1 series)
     model_name = config.provider_config.model.lower()
-    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'gpt-5'])
+    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'gpt-5', 'gpt5'])
 
     # Initialize conversation
     messages = [
@@ -701,13 +726,17 @@ async def _call_with_tools_azure(
         iteration += 1
         print(f"[TOOLS-AZURE] Iteration {iteration}/{max_iterations}")
 
+        # Force tool use on first iteration, then let LLM decide
+        # This ensures MiniZinc is actually called when enabled
+        tool_choice = "required" if iteration == 1 else "auto"
+
         # Build request parameters
         params: Dict[str, Any] = {
             "model": config.provider_config.azure_deployment,
             "messages": messages,
             "max_completion_tokens": config.max_tokens,
             "tools": tools,
-            "tool_choice": "auto",
+            "tool_choice": tool_choice,
         }
 
         # Only add temperature etc. for non-reasoning models
@@ -863,10 +892,12 @@ async def _call_with_tools_openrouter(
     if config.provider_config.x_title:
         headers["X-Title"] = config.provider_config.x_title
 
+    # Use very long timeout (30 min) for reasoning models that think for extended periods
     client = OpenAI(
         base_url=base_url,
         api_key=api_key,
         default_headers=headers if headers else None,
+        timeout=LLM_TIMEOUT,
     )
 
     # Initialize conversation
@@ -885,6 +916,10 @@ async def _call_with_tools_openrouter(
         iteration += 1
         print(f"[TOOLS-OPENROUTER] Iteration {iteration}/{max_iterations}")
 
+        # Force tool use on first iteration, then let LLM decide
+        # This ensures MiniZinc is actually called when enabled
+        tool_choice = "required" if iteration == 1 else "auto"
+
         # Build request parameters
         params: Dict[str, Any] = {
             "model": config.provider_config.model,
@@ -892,7 +927,7 @@ async def _call_with_tools_openrouter(
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
             "tools": tools,
-            "tool_choice": "auto",
+            "tool_choice": tool_choice,
         }
 
         # Add OpenRouter reasoning via extra_body
@@ -1008,9 +1043,11 @@ async def _call_with_tools_generic(
     except ImportError:
         raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
 
+    # Use very long timeout (30 min) for reasoning models that think for extended periods
     client = OpenAI(
         base_url=config.provider_config.base_url,
         api_key=config.provider_config.api_key,
+        timeout=LLM_TIMEOUT,
     )
 
     # Initialize conversation
@@ -1029,13 +1066,17 @@ async def _call_with_tools_generic(
         iteration += 1
         print(f"[TOOLS-GENERIC] Iteration {iteration}/{max_iterations}")
 
+        # Force tool use on first iteration, then let LLM decide
+        # This ensures MiniZinc is actually called when enabled
+        tool_choice = "required" if iteration == 1 else "auto"
+
         params: Dict[str, Any] = {
             "model": config.provider_config.model,
             "messages": messages,
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
             "tools": tools,
-            "tool_choice": "auto",
+            "tool_choice": tool_choice,
         }
 
         try:

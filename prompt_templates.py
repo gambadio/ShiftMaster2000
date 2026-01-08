@@ -28,45 +28,60 @@ Use these color codes when formatting output. Each shift should be assigned an a
 """
 
 MINIZINC_TOOL_INSTRUCTIONS = """
-## MiniZinc Constraint Solver Available
+## ⚠️ MANDATORY: Use MiniZinc Constraint Solver
 
-You have access to a **MiniZinc constraint solver** via the `run_minizinc` tool. Use it to:
+You **MUST** use the `run_minizinc` tool to generate this schedule. Do NOT generate the schedule manually.
 
-1. **Optimize shift fairness** - Distribute late shifts, weekend work, and unpopular shifts evenly
-2. **Ensure coverage constraints** - Guarantee minimum staffing per shift/day
-3. **Handle complex conflicts** - When multiple constraints interact (availability, skills, rotations)
-4. **Find feasible solutions** - When manual assignment seems impossible due to constraints
+### REQUIRED WORKFLOW:
+1. **FIRST**: Call `run_minizinc` with a constraint model that encodes all the scheduling rules
+2. **THEN**: Convert the MiniZinc solution to the JSON schedule format
 
-### When to Use MiniZinc:
-- Complex scheduling with many interacting constraints
-- Fairness optimization (equal distribution of shifts)
-- When you're unsure if constraints can be satisfied
-- To verify your manual assignments are optimal
+### What MiniZinc Solves:
+- Employee availability and time-off conflicts
+- Shift coverage requirements (minimum/maximum staff per shift)
+- Fairness distribution (equal distribution of shifts, late shifts, weekend work)
+- Minimum rest periods between shifts
+- Role-based assignment constraints
+- Weekly hour limits
 
-### How to Use:
-Call `run_minizinc` with a MiniZinc model. Example structure:
-
+### MiniZinc Model Template:
 ```minizinc
-% Parameters
-int: num_employees = 5;
-int: num_days = 7;
-int: min_coverage = 2;
+% Parameters - define based on actual data
+int: num_employees;
+int: num_days;
+int: num_shifts;
+int: min_coverage;
+array[1..num_employees, 1..num_days] of 0..1: available;  % 1 if available
 
-% Decision variables
-array[1..num_employees, 1..num_days] of var 0..1: works;
+% Decision variables: which shift each employee works each day (0 = off)
+array[1..num_employees, 1..num_days] of var 0..num_shifts: schedule;
 
-% Constraints
-constraint forall(d in 1..num_days)(sum(e in 1..num_employees)(works[e,d]) >= min_coverage);
+% Constraint: Only assign if available
+constraint forall(e in 1..num_employees, d in 1..num_days)(
+    available[e,d] = 0 -> schedule[e,d] = 0
+);
 
-% Objective
-solve minimize sum(e in 1..num_employees)(abs(sum(d in 1..num_days)(works[e,d]) - 5));
+% Constraint: Coverage per day
+constraint forall(d in 1..num_days)(
+    sum(e in 1..num_employees)(schedule[e,d] > 0) >= min_coverage
+);
 
-output [show(works)];
+% Constraint: Max 5 working days per employee per week
+constraint forall(e in 1..num_employees)(
+    sum(d in 1..num_days)(schedule[e,d] > 0) <= 5
+);
+
+% Objective: Balance workload fairly
+var int: max_shifts = max(e in 1..num_employees)(sum(d in 1..num_days)(schedule[e,d] > 0));
+var int: min_shifts = min(e in 1..num_employees)(sum(d in 1..num_days)(schedule[e,d] > 0));
+solve minimize max_shifts - min_shifts;
+
+output [show(schedule)];
 ```
 
-After getting the solution, convert it to the JSON schedule format.
+Pass the `data` parameter with actual values for num_employees, num_days, available matrix, etc.
 
-**IMPORTANT**: You SHOULD use MiniZinc for this scheduling task to ensure optimal and fair assignments.
+**⚠️ CRITICAL**: You MUST call `run_minizinc` FIRST before outputting any schedule JSON. Do not skip this step!
 """
 
 SYSTEM_TEMPLATE = """\
