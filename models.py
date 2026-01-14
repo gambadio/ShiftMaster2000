@@ -156,6 +156,10 @@ class LLMConfig(BaseModel):
     reasoning_max_tokens: Optional[int] = None  # Max tokens for reasoning (OpenRouter/Claude)
     reasoning_exclude: bool = False  # Exclude reasoning from response (OpenRouter)
 
+    # Azure Responses API (for streaming reasoning summaries)
+    use_responses_api: bool = False  # Use Responses API instead of Chat Completions (Azure only)
+    reasoning_summary: Optional[str] = None  # "auto", "concise", "detailed" - for Responses API
+
     # Claude-specific extended thinking
     budget_tokens: Optional[int] = None  # Claude: 1024-10000+ for extended thinking
 

@@ -1660,6 +1660,41 @@ with tabs[6]:
             help="Let the model think internally but don't show the reasoning in the final response (OpenRouter only)"
         )
 
+        # Azure Responses API section (streaming reasoning summaries)
+        if provider_config.provider == ProviderType.AZURE:
+            st.markdown("---")
+            st.markdown("#### 🔵 Azure Responses API (Streaming Reasoning)")
+            st.caption("Use the newer Responses API for streaming reasoning summaries with GPT-5/o-series models")
+
+            project.llm_config.use_responses_api = st.checkbox(
+                "✨ Use Responses API",
+                value=project.llm_config.use_responses_api,
+                help="Enable the Azure Responses API instead of Chat Completions.\n\n"
+                     "**Benefits:**\n"
+                     "- Stream reasoning summaries in real-time\n"
+                     "- Better performance with reasoning models\n"
+                     "- Lower costs due to improved cache utilization\n\n"
+                     "**Requirements:**\n"
+                     "- OpenAI SDK ≥1.27\n"
+                     "- May require limited access approval for some models"
+            )
+
+            if project.llm_config.use_responses_api:
+                reasoning_summary_options = ["None", "auto", "detailed"]
+                current_summary = project.llm_config.reasoning_summary or "None"
+                selected_summary = st.selectbox(
+                    "📝 Reasoning Summary Level",
+                    options=reasoning_summary_options,
+                    index=reasoning_summary_options.index(current_summary) if current_summary in reasoning_summary_options else 0,
+                    help="How detailed the reasoning summary should be:\n"
+                         "- **auto**: Let the model decide\n"
+                         "- **detailed**: Comprehensive reasoning summaries\n\n"
+                         "Note: GPT-5 series does not support 'concise' option"
+                )
+                project.llm_config.reasoning_summary = selected_summary if selected_summary != "None" else None
+
+                st.info("💡 When enabled, reasoning summaries will stream to the 'Thinking' display during generation.")
+
     # Validate configuration
     st.markdown("---")
     st.markdown(f"### {get_text('config_status', lang)}")

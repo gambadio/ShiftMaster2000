@@ -203,7 +203,11 @@ async def _call_azure(
     on_chunk: Optional[Callable[[str], None]],
     on_thinking: Optional[Callable[[str], None]],
 ) -> Dict[str, Any]:
-    """Call Azure OpenAI API"""
+    """Call Azure OpenAI API - routes to Responses API if use_responses_api is enabled"""
+    # Route to Responses API if enabled (supports streaming reasoning summaries)
+    if config.use_responses_api:
+        return await _call_azure_responses(prompt, config, user_message, on_chunk, on_thinking)
+
     try:
         from openai import AzureOpenAI
     except ImportError:
@@ -265,6 +269,227 @@ async def _call_azure(
     else:
         response = client.chat.completions.create(**params)
         return _parse_openai_response(response)
+
+
+async def _call_azure_responses(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str,
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+) -> Dict[str, Any]:
+    """
+    Call Azure OpenAI using the Responses API.
+
+    The Responses API supports streaming reasoning summaries, unlike the Chat Completions API.
+    This requires the /openai/v1/ base URL endpoint.
+
+    Key differences from Chat Completions:
+    - Uses client.responses.create() instead of client.chat.completions.create()
+    - Supports reasoning.summary parameter for streaming reasoning content
+    - Uses 'input' instead of 'messages'
+    - Uses 'max_output_tokens' instead of 'max_completion_tokens'
+    """
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
+
+    # Build the Responses API base URL (different from Chat Completions!)
+    azure_endpoint = config.provider_config.azure_endpoint
+    if azure_endpoint:
+        # Ensure endpoint doesn't end with slash
+        azure_endpoint = azure_endpoint.rstrip('/')
+        responses_base_url = f"{azure_endpoint}/openai/v1/"
+    else:
+        raise ValueError("Azure endpoint is required for Responses API")
+
+    print(f"[AZURE-RESPONSES] Using base URL: {responses_base_url}")
+
+    # Create client pointing to Responses API endpoint
+    client = OpenAI(
+        api_key=config.provider_config.api_key,
+        base_url=responses_base_url,
+        timeout=LLM_TIMEOUT,
+    )
+
+    # Check if this is a reasoning model
+    model_name = config.provider_config.model.lower()
+    deployment_name = config.provider_config.azure_deployment or config.provider_config.model
+    is_reasoning_model = any(x in model_name for x in ['o1', 'o3', 'o4', 'gpt-5'])
+
+    print(f"[AZURE-RESPONSES] Model: {deployment_name}, Is reasoning model: {is_reasoning_model}")
+
+    # Build the input - Responses API uses different format than Chat Completions
+    input_messages = [
+        {"role": "developer", "content": prompt},  # developer message = system message for reasoning models
+        {"role": "user", "content": user_message}
+    ]
+
+    # Build request parameters for Responses API
+    params: Dict[str, Any] = {
+        "model": deployment_name,
+        "input": input_messages,
+    }
+
+    # Add max_output_tokens (Responses API uses this instead of max_completion_tokens)
+    if config.max_tokens:
+        params["max_output_tokens"] = config.max_tokens
+
+    # Build reasoning configuration for Responses API
+    reasoning_config = {}
+    if config.reasoning_effort:
+        reasoning_config["effort"] = config.reasoning_effort
+        print(f"[AZURE-RESPONSES] Reasoning effort: {config.reasoning_effort}")
+    if config.reasoning_summary:
+        reasoning_config["summary"] = config.reasoning_summary
+        print(f"[AZURE-RESPONSES] Reasoning summary: {config.reasoning_summary}")
+
+    if reasoning_config:
+        params["reasoning"] = reasoning_config
+
+    # Stream or non-stream
+    if config.enable_streaming:
+        return await _stream_azure_responses(client, params, on_chunk, on_thinking, deployment_name)
+    else:
+        # Non-streaming call
+        response = client.responses.create(**params)
+        return _parse_azure_responses_response(response, deployment_name)
+
+
+async def _stream_azure_responses(
+    client,
+    params: Dict[str, Any],
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+    model_name: str,
+) -> Dict[str, Any]:
+    """
+    Stream Azure Responses API with reasoning summary support.
+
+    Event types to handle:
+    - response.reasoning_summary_text.delta: Reasoning/thinking content
+    - response.output_text.delta: Regular output content
+    - response.completed: Final response with usage stats
+    """
+    params["stream"] = True
+    full_content = []
+    full_reasoning = []
+    usage_info = {}
+
+    print(f"[AZURE-RESPONSES] Starting stream for model: {model_name}")
+
+    try:
+        stream = client.responses.create(**params)
+        print("[AZURE-RESPONSES] Stream created successfully")
+
+        event_count = 0
+        for event in stream:
+            event_count += 1
+            event_type = getattr(event, 'type', None)
+
+            # Debug first few events
+            if event_count <= 5:
+                print(f"[AZURE-RESPONSES] Event #{event_count}: type={event_type}")
+
+            # Handle reasoning summary delta events - THIS IS THE KEY!
+            if event_type == 'response.reasoning_summary_text.delta':
+                delta = getattr(event, 'delta', '')
+                if delta:
+                    full_reasoning.append(delta)
+                    if on_thinking:
+                        on_thinking(delta)
+                    if event_count <= 5:
+                        print(f"[REASONING] {delta[:100] if len(delta) > 100 else delta}")
+
+            # Handle regular output text delta
+            elif event_type == 'response.output_text.delta':
+                delta = getattr(event, 'delta', '')
+                if delta:
+                    full_content.append(delta)
+                    if on_chunk:
+                        on_chunk(delta)
+
+            # Handle completed event with usage stats
+            elif event_type == 'response.completed':
+                response_obj = getattr(event, 'response', None)
+                if response_obj and hasattr(response_obj, 'usage') and response_obj.usage:
+                    usage = response_obj.usage
+                    usage_info = {
+                        "input_tokens": getattr(usage, "input_tokens", 0),
+                        "output_tokens": getattr(usage, "output_tokens", 0),
+                    }
+                    # Get reasoning tokens from output_tokens_details
+                    if hasattr(usage, "output_tokens_details"):
+                        details = usage.output_tokens_details
+                        if hasattr(details, "reasoning_tokens"):
+                            usage_info["reasoning_tokens"] = details.reasoning_tokens
+                            print(f"[AZURE-RESPONSES] Reasoning tokens: {details.reasoning_tokens}")
+
+        print(f"[AZURE-RESPONSES] Stream complete: {event_count} events, "
+              f"{len(full_content)} content pieces, {len(full_reasoning)} reasoning pieces")
+
+    except Exception as e:
+        print(f"[AZURE-RESPONSES] Stream error: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+    return {
+        "content": "".join(full_content),
+        "thinking": "".join(full_reasoning) if full_reasoning else None,
+        "usage": usage_info,
+        "model": model_name,
+    }
+
+
+def _parse_azure_responses_response(response, model_name: str) -> Dict[str, Any]:
+    """Parse non-streaming Azure Responses API response"""
+    # Extract output text from response
+    output_text = getattr(response, 'output_text', '')
+
+    # If output_text not directly available, parse from output items
+    if not output_text and hasattr(response, 'output'):
+        for item in response.output:
+            if getattr(item, 'type', None) == 'message':
+                for content in getattr(item, 'content', []):
+                    if getattr(content, 'type', None) == 'output_text':
+                        output_text = getattr(content, 'text', '')
+                        break
+
+    # Extract reasoning summary from output items
+    reasoning_text = None
+    if hasattr(response, 'output'):
+        for item in response.output:
+            if getattr(item, 'type', None) == 'reasoning':
+                summary_parts = getattr(item, 'summary', [])
+                if summary_parts:
+                    reasoning_text = ''.join([
+                        getattr(part, 'text', '')
+                        for part in summary_parts
+                        if hasattr(part, 'text')
+                    ])
+                break
+
+    # Extract usage
+    usage_info = {}
+    if hasattr(response, 'usage') and response.usage:
+        usage = response.usage
+        usage_info = {
+            "input_tokens": getattr(usage, "input_tokens", 0),
+            "output_tokens": getattr(usage, "output_tokens", 0),
+        }
+        if hasattr(usage, "output_tokens_details"):
+            details = usage.output_tokens_details
+            if hasattr(details, "reasoning_tokens"):
+                usage_info["reasoning_tokens"] = details.reasoning_tokens
+
+    return {
+        "content": output_text,
+        "thinking": reasoning_text,
+        "usage": usage_info,
+        "model": model_name,
+    }
 
 
 async def _call_generic(
@@ -693,6 +918,13 @@ async def _call_with_tools_azure(
     max_iterations: int,
 ) -> Dict[str, Any]:
     """Call Azure OpenAI API with tool calling support"""
+    # Route to Responses API if enabled (supports streaming reasoning summaries)
+    if config.use_responses_api:
+        return await _call_with_tools_azure_responses(
+            prompt, config, user_message, tools, tool_processor,
+            on_chunk, on_thinking, on_tool_call, max_iterations
+        )
+
     try:
         from openai import AzureOpenAI
     except ImportError:
@@ -828,6 +1060,339 @@ async def _call_with_tools_azure(
         "usage": total_usage,
         "model": config.provider_config.azure_deployment,
         "tool_calls": all_tool_calls,
+    }
+
+
+async def _call_with_tools_azure_responses(
+    prompt: str,
+    config: LLMConfig,
+    user_message: str,
+    tools: List[Dict[str, Any]],
+    tool_processor: Callable[[Dict[str, Any]], Dict[str, Any]],
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+    on_tool_call: Optional[Callable[[str, str], None]],
+    max_iterations: int,
+) -> Dict[str, Any]:
+    """
+    Call Azure OpenAI Responses API with tool calling support.
+
+    This uses the newer Responses API which supports streaming reasoning summaries.
+    Tools work differently in the Responses API compared to Chat Completions.
+    """
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError("openai package not installed. Run: pip install openai>=1.0.0")
+
+    # Build the Responses API base URL
+    azure_endpoint = config.provider_config.azure_endpoint
+    if azure_endpoint:
+        azure_endpoint = azure_endpoint.rstrip('/')
+        responses_base_url = f"{azure_endpoint}/openai/v1/"
+    else:
+        raise ValueError("Azure endpoint is required for Responses API")
+
+    print(f"[TOOLS-AZURE-RESPONSES] Using base URL: {responses_base_url}")
+
+    client = OpenAI(
+        api_key=config.provider_config.api_key,
+        base_url=responses_base_url,
+        timeout=LLM_TIMEOUT,
+    )
+
+    deployment_name = config.provider_config.azure_deployment or config.provider_config.model
+    print(f"[TOOLS-AZURE-RESPONSES] Model: {deployment_name}")
+
+    # Build initial input
+    input_items = [
+        {"role": "developer", "content": prompt},
+        {"role": "user", "content": user_message}
+    ]
+
+    all_tool_calls = []
+    total_usage = {"input_tokens": 0, "output_tokens": 0}
+    final_content = ""
+    final_thinking = []
+    iteration = 0
+    previous_response_id = None
+
+    while iteration < max_iterations:
+        iteration += 1
+        print(f"[TOOLS-AZURE-RESPONSES] Iteration {iteration}/{max_iterations}")
+
+        # Build request parameters
+        params: Dict[str, Any] = {
+            "model": deployment_name,
+            "input": input_items,
+            "tools": tools,
+            "tool_choice": "required" if iteration == 1 else "auto",
+        }
+
+        # Add max_output_tokens
+        if config.max_tokens:
+            params["max_output_tokens"] = config.max_tokens
+
+        # Add reasoning configuration
+        reasoning_config = {}
+        if config.reasoning_effort:
+            reasoning_config["effort"] = config.reasoning_effort
+        if config.reasoning_summary:
+            reasoning_config["summary"] = config.reasoning_summary
+        if reasoning_config:
+            params["reasoning"] = reasoning_config
+
+        # Chain responses using previous_response_id if available
+        if previous_response_id:
+            params["previous_response_id"] = previous_response_id
+
+        # For tool iterations after the first, we only send tool results
+        if iteration > 1 and previous_response_id:
+            # The input should only contain tool call outputs for chained responses
+            params["input"] = input_items
+
+        # Make the call (streaming for reasoning summaries)
+        if config.enable_streaming:
+            response_data = await _stream_azure_responses_with_tools(
+                client, params, on_chunk, on_thinking, deployment_name
+            )
+        else:
+            response = client.responses.create(**params)
+            response_data = _parse_azure_responses_with_tools(response, deployment_name)
+
+        # Update usage
+        if response_data.get("usage"):
+            total_usage["input_tokens"] += response_data["usage"].get("input_tokens", 0)
+            total_usage["output_tokens"] += response_data["usage"].get("output_tokens", 0)
+
+        # Collect reasoning
+        if response_data.get("thinking"):
+            final_thinking.append(response_data["thinking"])
+
+        # Store response ID for chaining
+        previous_response_id = response_data.get("response_id")
+
+        # Check for tool calls in the response
+        tool_calls_in_response = response_data.get("tool_calls_pending", [])
+
+        if tool_calls_in_response:
+            print(f"[TOOLS-AZURE-RESPONSES] LLM requested {len(tool_calls_in_response)} tool call(s)")
+
+            # Build tool results for next iteration
+            tool_results = []
+            for tc in tool_calls_in_response:
+                tool_name = tc.get("name", "")
+                tool_args = tc.get("arguments", "{}")
+                call_id = tc.get("call_id", "")
+
+                print(f"[TOOLS-AZURE-RESPONSES] Executing: {tool_name}")
+
+                if on_tool_call:
+                    on_tool_call(tool_name, tool_args)
+
+                # Execute the tool
+                tool_result = tool_processor({
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": tool_args
+                    }
+                })
+
+                all_tool_calls.append({
+                    "name": tool_name,
+                    "arguments": tool_args,
+                    "result": tool_result
+                })
+
+                # Format tool result for Responses API
+                tool_results.append({
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": json.dumps(tool_result)
+                })
+
+                print(f"[TOOLS-AZURE-RESPONSES] {tool_name} result: success={tool_result.get('success', False)}")
+
+            # Update input for next iteration with tool results
+            input_items = tool_results
+
+        else:
+            # No tool calls - this is the final response
+            final_content = response_data.get("content", "")
+
+            if on_chunk and final_content and not config.enable_streaming:
+                on_chunk(final_content)
+
+            break
+
+    return {
+        "content": final_content,
+        "thinking": "\n".join(final_thinking) if final_thinking else None,
+        "usage": total_usage,
+        "model": deployment_name,
+        "tool_calls": all_tool_calls,
+    }
+
+
+async def _stream_azure_responses_with_tools(
+    client,
+    params: Dict[str, Any],
+    on_chunk: Optional[Callable[[str], None]],
+    on_thinking: Optional[Callable[[str], None]],
+    model_name: str,
+) -> Dict[str, Any]:
+    """
+    Stream Azure Responses API with tool calling support.
+
+    Returns response data including any pending tool calls.
+    """
+    params["stream"] = True
+    full_content = []
+    full_reasoning = []
+    usage_info = {}
+    tool_calls_pending = []
+    response_id = None
+
+    print(f"[TOOLS-AZURE-RESPONSES] Starting stream for model: {model_name}")
+
+    try:
+        stream = client.responses.create(**params)
+
+        event_count = 0
+        current_tool_call = None
+
+        for event in stream:
+            event_count += 1
+            event_type = getattr(event, 'type', None)
+
+            if event_count <= 5:
+                print(f"[TOOLS-AZURE-RESPONSES] Event #{event_count}: type={event_type}")
+
+            # Handle reasoning summary delta
+            if event_type == 'response.reasoning_summary_text.delta':
+                delta = getattr(event, 'delta', '')
+                if delta:
+                    full_reasoning.append(delta)
+                    if on_thinking:
+                        on_thinking(delta)
+
+            # Handle output text delta
+            elif event_type == 'response.output_text.delta':
+                delta = getattr(event, 'delta', '')
+                if delta:
+                    full_content.append(delta)
+                    if on_chunk:
+                        on_chunk(delta)
+
+            # Handle function call events
+            elif event_type == 'response.function_call_arguments.delta':
+                # Accumulate function arguments
+                pass  # Arguments come in the done event
+
+            elif event_type == 'response.output_item.done':
+                # Check if this is a function call
+                item = getattr(event, 'item', None)
+                if item and getattr(item, 'type', None) == 'function_call':
+                    tool_calls_pending.append({
+                        "call_id": getattr(item, 'call_id', ''),
+                        "name": getattr(item, 'name', ''),
+                        "arguments": getattr(item, 'arguments', '{}')
+                    })
+                    print(f"[TOOLS-AZURE-RESPONSES] Function call detected: {getattr(item, 'name', '')}")
+
+            # Handle completed event
+            elif event_type == 'response.completed':
+                response_obj = getattr(event, 'response', None)
+                if response_obj:
+                    response_id = getattr(response_obj, 'id', None)
+                    if hasattr(response_obj, 'usage') and response_obj.usage:
+                        usage = response_obj.usage
+                        usage_info = {
+                            "input_tokens": getattr(usage, "input_tokens", 0),
+                            "output_tokens": getattr(usage, "output_tokens", 0),
+                        }
+                        if hasattr(usage, "output_tokens_details"):
+                            details = usage.output_tokens_details
+                            if hasattr(details, "reasoning_tokens"):
+                                usage_info["reasoning_tokens"] = details.reasoning_tokens
+
+        print(f"[TOOLS-AZURE-RESPONSES] Stream complete: {event_count} events, "
+              f"{len(tool_calls_pending)} tool calls")
+
+    except Exception as e:
+        print(f"[TOOLS-AZURE-RESPONSES] Stream error: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+    return {
+        "content": "".join(full_content),
+        "thinking": "".join(full_reasoning) if full_reasoning else None,
+        "usage": usage_info,
+        "model": model_name,
+        "tool_calls_pending": tool_calls_pending,
+        "response_id": response_id,
+    }
+
+
+def _parse_azure_responses_with_tools(response, model_name: str) -> Dict[str, Any]:
+    """Parse non-streaming Azure Responses API response with tool support"""
+    output_text = getattr(response, 'output_text', '')
+    tool_calls_pending = []
+    reasoning_text = None
+    response_id = getattr(response, 'id', None)
+
+    # Parse output items
+    if hasattr(response, 'output'):
+        for item in response.output:
+            item_type = getattr(item, 'type', None)
+
+            # Extract message content
+            if item_type == 'message':
+                for content in getattr(item, 'content', []):
+                    if getattr(content, 'type', None) == 'output_text':
+                        output_text = getattr(content, 'text', '')
+
+            # Extract reasoning
+            elif item_type == 'reasoning':
+                summary_parts = getattr(item, 'summary', [])
+                if summary_parts:
+                    reasoning_text = ''.join([
+                        getattr(part, 'text', '')
+                        for part in summary_parts
+                        if hasattr(part, 'text')
+                    ])
+
+            # Extract function calls
+            elif item_type == 'function_call':
+                tool_calls_pending.append({
+                    "call_id": getattr(item, 'call_id', ''),
+                    "name": getattr(item, 'name', ''),
+                    "arguments": getattr(item, 'arguments', '{}')
+                })
+
+    # Extract usage
+    usage_info = {}
+    if hasattr(response, 'usage') and response.usage:
+        usage = response.usage
+        usage_info = {
+            "input_tokens": getattr(usage, "input_tokens", 0),
+            "output_tokens": getattr(usage, "output_tokens", 0),
+        }
+        if hasattr(usage, "output_tokens_details"):
+            details = usage.output_tokens_details
+            if hasattr(details, "reasoning_tokens"):
+                usage_info["reasoning_tokens"] = details.reasoning_tokens
+
+    return {
+        "content": output_text,
+        "thinking": reasoning_text,
+        "usage": usage_info,
+        "model": model_name,
+        "tool_calls_pending": tool_calls_pending,
+        "response_id": response_id,
     }
 
 

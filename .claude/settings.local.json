@@ -10,7 +10,8 @@
       "Bash(python -m py_compile:*)",
       "Bash(curl:*)",
       "Bash(timeout 5 python:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "mcp__firecrawl__firecrawl_scrape"
     ],
     "deny": [],
     "ask": []
